@@ -67,20 +67,35 @@ class ApplianceDetector:
         self.device = device or get_device()
         self.classes = MVP_APPLIANCE_CLASSES
         self.model = None
+        self._model_path = None
+        self._model_type = "unavailable"
         self.model_type = "unavailable"
         self.model_version = "unknown"
         self._load_time_ms = 0.0
 
         resolved_path = model_path or MODEL_PATHS.get("appliance_detector")
         if YOLO and resolved_path and os.path.exists(resolved_path):
-            self.load_model(resolved_path, model_type="coco" if _is_coco_model(resolved_path) else "custom")
+            self._model_path = resolved_path
+            self._model_type = "coco" if _is_coco_model(resolved_path) else "custom"
         else:
             fallback = MODEL_PATHS.get("appliance_detector_fallback")
             if YOLO and fallback and os.path.exists(fallback):
-                self.load_model(fallback, model_type="coco")
+                self._model_path = fallback
+                self._model_type = "coco"
 
-        logger.info("ApplianceDetector initialized | device={} | model={} | version={} | load={}ms",
-                     self.device, self.model_type, self.model_version, round(self._load_time_ms, 1))
+        if self._model_path:
+            if os.environ.get("LAZY_LOAD_MODELS", "true").lower() != "true":
+                self.load_model(self._model_path, self._model_type)
+
+        logger.info("ApplianceDetector initialized | device={} | model_path={} | type={}",
+                     self.device, self._model_path or "none", self._model_type)
+
+    def _ensure_model_loaded(self) -> bool:
+        if self.model is not None:
+            return True
+        if self._model_path and os.path.exists(self._model_path):
+            return self.load_model(self._model_path, self._model_type)
+        return False
 
     def load_model(self, model_path: str, model_type: str = "custom") -> bool:
         if YOLO is None:
@@ -127,6 +142,7 @@ class ApplianceDetector:
         Each detection has class_name, confidence, bbox.
         Sorted by confidence descending.
         """
+        self._ensure_model_loaded()
         if self.model is None or image is None or not isinstance(image, np.ndarray):
             return [], 0.0
 

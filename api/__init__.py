@@ -1,6 +1,6 @@
 """
 FastAPI service for the AI Appliance Inspection Platform.
-
+git status --short | head -50
 Endpoints:
 - GET  /health                     Health check
 - GET  /api/v1/info               API information
@@ -135,8 +135,7 @@ async def root():
 @app.get("/health")
 async def health():
     return {
-        "status": "healthy" if app_state["pipeline"] is not None else "initializing",
-        "timestamp": datetime.now().isoformat(),
+        "status": "ok",
     }
 
 

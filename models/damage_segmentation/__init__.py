@@ -44,17 +44,27 @@ class DamageSegmentationDetector:
         self.iou_threshold = iou_threshold or config["iou_threshold"]
         self.device = device or get_device()
         self.model = None
+        self._model_path_resolved = None
         self.input_size = config["input_size"]
 
         resolved_path = model_path or MODEL_PATHS.get("damage_segmentation_default")
         if YOLO and resolved_path and os.path.exists(resolved_path):
-            self.load_model(resolved_path)
+            self._model_path_resolved = resolved_path
+            if os.environ.get("LAZY_LOAD_MODELS", "true").lower() != "true":
+                self.load_model(resolved_path)
 
         logger.info(
             "DamageSegmentationDetector initialized | device={} | model_path={}",
             self.device,
             resolved_path or "not loaded",
         )
+
+    def _ensure_model_loaded(self) -> bool:
+        if self.model is not None:
+            return True
+        if self._model_path_resolved and os.path.exists(self._model_path_resolved):
+            return self.load_model(self._model_path_resolved)
+        return False
 
     def load_model(self, model_path: str) -> bool:
         if YOLO is None:
@@ -73,6 +83,7 @@ class DamageSegmentationDetector:
     def detect(
         self, image: np.ndarray, roi: Optional[np.ndarray] = None
     ) -> List[Dict[str, Any]]:
+        self._ensure_model_loaded()
         if self.model is None:
             logger.warning("No segmentation model loaded.")
             return []

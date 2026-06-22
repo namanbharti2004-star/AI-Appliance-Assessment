@@ -1,5 +1,7 @@
 # AI-Powered Appliance Inspection & Insurance Claim Platform
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
 A production-grade computer vision system that detects damage to consumer electronics and appliances, estimates repair costs, detects fraud, and generates professional insurance claim reports.
 
 ## Features
@@ -49,6 +51,7 @@ User Upload → Image Quality Gate → Appliance Detector (YOLO11s)
 - **PDF**: fpdf2 with IRDAI compliance
 - **Infrastructure**: Docker, Docker Compose, Redis (Celery optional)
 - **CI/CD**: GitHub Actions (test → lint → build)
+- **Deployment**: Render (Docker-based), Railway, any Docker host
 
 ## Setup
 
@@ -74,6 +77,42 @@ streamlit run dashboard/app.py
 # Inspect a single image
 python scripts/inference.py --image path/to/photo.jpg --save-vis
 ```
+
+## Deploy to Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy)
+
+### Manual Deployment
+
+1. Push the repo to GitHub.
+
+2. In the [Render Dashboard](https://dashboard.render.com), create a **New Web Service** and connect your repo.
+
+3. Use these settings:
+
+   | Setting | Value |
+   |---------|-------|
+   | **Runtime** | Docker |
+   | **Build Command** | (leave blank — uses Dockerfile) |
+   | **Start Command** | (leave blank — uses Dockerfile CMD) |
+   | **Instance Type** | Starter or higher (512 MB+ RAM recommended) |
+   | **Health Check Path** | `/health` |
+
+4. Set environment variable (optional):
+
+   | Variable | Value | Notes |
+   |----------|-------|-------|
+   | `LAZY_LOAD_MODELS` | `true` (default) | Models load on first request, reducing startup memory. Set to `false` to load eagerly. |
+   | `PYTHONUNBUFFERED` | `1` | Ensures logs stream in real time. |
+
+5. Deploy. The service listens on `$PORT` (set automatically by Render). The health endpoint at `/health` returns `{"status": "ok"}` once the server starts.
+
+### Notes
+
+- **Model loading**: By default, YOLO models are loaded lazily (first request triggers loading). This keeps the initial memory footprint low. The first request may take 5–15 seconds while models initialize.
+- **Instance size**: A Starter instance (512 MB) may run out of memory under concurrent load. Upgrade to a larger plan if needed.
+- **Video/async**: Redis and Celery are optional. Video processing works synchronously without them.
+- **No GPU on Render free tier**: Inference runs on CPU. Expect slower inference times; optimize by reducing image resolution before upload.
 
 ## API Endpoints
 

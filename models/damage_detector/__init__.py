@@ -150,10 +150,13 @@ class DamageDetector:
         self.iou_threshold = iou_threshold or config["iou_threshold"]
         self.device = device or get_device()
         self.model = None
+        self._model_path = None
         self.clip_detector = None
 
         if YOLO and model_path and os.path.exists(model_path):
-            self.load_model(model_path)
+            self._model_path = model_path
+            if os.environ.get("LAZY_LOAD_MODELS", "true").lower() != "true":
+                self.load_model(model_path)
         elif appliance_name.lower() == "television" and CLIP_AVAILABLE and CLIPTVDamageDetector is not None:
             try:
                 self.clip_detector = CLIPTVDamageDetector(
@@ -174,7 +177,15 @@ class DamageDetector:
             self.model = None
             return False
 
+    def _ensure_model_loaded(self) -> bool:
+        if self.model is not None:
+            return True
+        if self._model_path and os.path.exists(self._model_path):
+            return self.load_model(self._model_path)
+        return False
+
     def _detect_with_yolo(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        self._ensure_model_loaded()
         if self.model is None or image is None or not isinstance(image, np.ndarray):
             return []
         detections: List[Dict[str, Any]] = []
