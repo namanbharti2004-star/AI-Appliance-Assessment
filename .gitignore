@@ -1,0 +1,79 @@
+# ─── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+*.so
+.Python
+
+# ─── Virtual Environment ────────────────────────────────
+.venv/
+venv/
+env/
+envs/
+.venv.bak/
+
+# ─── IDE / Editor ───────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ─── Project Data ───────────────────────────────────────
+datasets/
+data/*.db
+data/monitor.db
+data/fraud_hashes.db
+
+# ─── Logs ───────────────────────────────────────────────
+logs/
+*.log
+
+# ─── Output / Temporary ─────────────────────────────────
+output/
+reports/
+temp/
+tmp/
+runs/
+
+# ─── Testing ────────────────────────────────────────────
+.pytest_cache/
+.coverage
+coverage/
+htmlcov/
+.coverage.*
+*.coverage
+
+# ─── Jupyter ────────────────────────────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ─── Environment / Secrets ──────────────────────────────
+.env
+.env.*
+*.pem
+*.key
+*.cert
+
+# ─── Docker ─────────────────────────────────────────────
+.docker/
+
+# ─── Model Training Artifacts (keep final weights) ─────
+models/damage_detector/damage_*/
+models/damage_detector/*/weights/
+models/damage_detector/*/train/
+models/damage_detector/*/val/
+models/damage_detector/*/test/
+models/appliance_detector/*/weights/
+models/appliance_detector/*/train/
+models/appliance_detector/*/val/
+models/appliance_detector/*/test/
+
+# ─── Documents (keep README, exclude generated PDFs) ───
+*.pdf
+!PROJECT_REPORT.pdf

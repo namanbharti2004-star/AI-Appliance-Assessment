@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./output:/app/output
+      - ./reports:/app/reports
+      - ./models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEVICE=cpu
+      - REDIS_URL=redis://redis:6379/0
+    command: python scripts/run_api.py
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  dashboard:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./reports:/app/reports
+      - ./models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: streamlit run dashboard/app.py --server.port=8501 --server.address=0.0.0.0
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  celery_worker:
+    build: .
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./output:/app/output
+      - ./reports:/app/reports
+      - ./models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEVICE=cpu
+      - REDIS_URL=redis://redis:6379/0
+    command: celery -A services.video_queue.celery_app worker --loglevel=info --concurrency=1
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy

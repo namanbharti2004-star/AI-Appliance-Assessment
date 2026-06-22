@@ -1,0 +1,141 @@
+# Repair Cost Estimation Configuration
+# Edit values as needed for your market/pricing.
+# Format: per appliance and damage type, with min and max cost in INR.
+
+phone:
+  screen_crack:
+    min: 2000
+    max: 12000
+    description: "Screen crack repair or replacement"
+  display_lines:
+    min: 1500
+    max: 8000
+    description: "Display line / LCD replacement"
+  dent:
+    min: 500
+    max: 3000
+    description: "Body dent repair"
+  camera_crack:
+    min: 1500
+    max: 5000
+    description: "Camera lens replacement"
+  body_damage:
+    min: 800
+    max: 4000
+    description: "General body damage"
+  missing_camera:
+    min: 2000
+    max: 6000
+    description: "Missing camera module"
+  missing_buttons:
+    min: 300
+    max: 1500
+    description: "Missing button replacement"
+
+laptop:
+  screen_crack:
+    min: 3000
+    max: 15000
+    description: "Screen panel replacement"
+  display_lines:
+    min: 3000
+    max: 12000
+    description: "Display / LCD replacement"
+  dent:
+    min: 1000
+    max: 5000
+    description: "Body dent repair"
+  keyboard_damage:
+    min: 1500
+    max: 6000
+    description: "Keyboard replacement"
+  hinge_damage:
+    min: 2000
+    max: 8000
+    description: "Hinge mechanism repair"
+  body_dent:
+    min: 1000
+    max: 5000
+    description: "Body dent repair"
+  missing_keys:
+    min: 500
+    max: 3000
+    description: "Individual key replacement"
+  missing_hinge_cover:
+    min: 800
+    max: 2500
+    description: "Hinge cover replacement"
+
+television:
+  screen_crack:
+    min: 5000
+    max: 30000
+    description: "Screen panel replacement"
+  panel_damage:
+    min: 5000
+    max: 30000
+    description: "Panel damage repair"
+  display_lines:
+    min: 3000
+    max: 15000
+    description: "Display line repair"
+  dead_pixels:
+    min: 2000
+    max: 10000
+    description: "Dead pixel repair"
+  dent:
+    min: 1000
+    max: 5000
+    description: "Body dent repair"
+  missing_stand:
+    min: 1500
+    max: 5000
+    description: "Stand replacement"
+  missing_bezel:
+    min: 800
+    max: 3000
+    description: "Bezel replacement"
+
+refrigerator:
+  dent:
+    min: 1000
+    max: 5000
+    description: "Body dent repair"
+  rust:
+    min: 1500
+    max: 6000
+    description: "Rust treatment and repainting"
+  door_seal_damage:
+    min: 800
+    max: 3000
+    description: "Door seal gasket replacement"
+  surface_scratch:
+    min: 500
+    max: 2000
+    description: "Surface scratch repair"
+  major_dent:
+    min: 2000
+    max: 8000
+    description: "Major dent repair"
+  major_scratch:
+    min: 1000
+    max: 4000
+    description: "Major scratch repair"
+  minor_dent:
+    min: 500
+    max: 3000
+    description: "Minor dent repair"
+  minor_scratch:
+    min: 300
+    max: 1500
+    description: "Minor scratch repair"
+
+general:
+  missing_part:
+    min: 500
+    max: 5000
+    description: "General missing part replacement"
+  default:
+    min: 1000
+    max: 5000
+    description: "Default repair estimate"

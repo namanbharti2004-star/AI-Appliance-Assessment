@@ -1,0 +1,6 @@
+train: /Users/sneh/Downloads/AI-Appliance-Assessment/datasets/damage_detector/laptop/train/images
+val: /Users/sneh/Downloads/AI-Appliance-Assessment/datasets/damage_detector/laptop/val/images
+test: /Users/sneh/Downloads/AI-Appliance-Assessment/datasets/damage_detector/laptop/test/images
+
+nc: 6
+names: ['Normal', 'crack', 'fade', 'lines', 'spot', 'undefined']

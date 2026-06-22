@@ -1,0 +1,5 @@
+train: /Users/sneh/Downloads/AI-Appliance-Assessment/datasets/damage_detector/refrigerator/train/images
+val: /Users/sneh/Downloads/AI-Appliance-Assessment/datasets/damage_detector/refrigerator/val/images
+test: /Users/sneh/Downloads/AI-Appliance-Assessment/datasets/damage_detector/refrigerator/test/images
+nc: 4
+names: ['major_dent', 'major_scratch', 'minor_dent', 'minor_scratch']
