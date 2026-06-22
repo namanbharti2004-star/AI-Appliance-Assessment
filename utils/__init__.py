@@ -178,35 +178,63 @@ def read_image(image_path: str) -> Optional[np.ndarray]:
     import unicodedata
     import numpy as np
     import re
+    import glob as glob_mod
 
-    def _sanitize_path(p: str) -> str:
-        p = unicodedata.normalize("NFC", p).strip()
-        p = re.sub(r"[\u2000-\u200A\u202F\u205F\u3000]", " ", p)
-        p = re.sub(r"\s+", " ", p)
-        return p
-
-    paths_to_try = [_sanitize_path(image_path), image_path]
-    for attempt_path in dict.fromkeys(paths_to_try):
+    def _find_file(p: str) -> Optional[str]:
+        if os.path.exists(p):
+            return p
         try:
-            ext = os.path.splitext(attempt_path)[1].lower()
-            if ext in (".heic", ".heif"):
-                try:
-                    from PIL import ImageOps
-                    from pillow_heif import open_heif
-                    heif_file = open_heif(attempt_path)
-                    pil_image = heif_file.to_pillow()
-                    pil_image = ImageOps.exif_transpose(pil_image)
-                except Exception:
-                    pil_image = Image.open(attempt_path)
-                image = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
-                return image
-            with open(attempt_path, "rb") as f:
-                file_bytes = np.asarray(bytearray(f.read()), dtype=np.uint8)
-            image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-            if image is not None:
-                return image
+            with open(p, "rb") as f:
+                f.read(1)
+            return p
         except Exception:
-            continue
+            pass
+        return None
+
+    paths_to_try = [image_path, unicodedata.normalize("NFC", image_path).strip()]
+    for attempt in paths_to_try:
+        found = _find_file(attempt)
+        if found:
+            try:
+                ext = os.path.splitext(found)[1].lower()
+                if ext in (".heic", ".heif"):
+                    try:
+                        from PIL import ImageOps
+                        from pillow_heif import open_heif
+                        heif_file = open_heif(found)
+                        pil_image = heif_file.to_pillow()
+                        pil_image = ImageOps.exif_transpose(pil_image)
+                    except Exception:
+                        pil_image = Image.open(found)
+                    return cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+                with open(found, "rb") as f:
+                    file_bytes = np.asarray(bytearray(f.read()), dtype=np.uint8)
+                img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                if img is not None:
+                    return img
+            except Exception:
+                continue
+
+    parent = os.path.dirname(image_path)
+    base = os.path.basename(image_path)
+    if parent and os.path.isdir(parent):
+        name_no_ext = os.path.splitext(base)[0]
+        candidates = glob_mod.glob(os.path.join(parent, name_no_ext + ".*"))
+        candidates += glob_mod.glob(os.path.join(parent, name_no_ext) + "*")
+        for cp in dict.fromkeys(candidates):
+            if cp == image_path:
+                continue
+            found = _find_file(cp)
+            if found:
+                try:
+                    with open(found, "rb") as f:
+                        file_bytes = np.asarray(bytearray(f.read()), dtype=np.uint8)
+                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                    if img is not None:
+                        return img
+                except Exception:
+                    continue
+
     logger.error(f"Failed to read image from {image_path}")
     return None
 
