@@ -1,6 +1,6 @@
 """
 FastAPI service for the AI Appliance Inspection Platform.
-git status --short | head -50
+
 Endpoints:
 - GET  /health                     Health check
 - GET  /api/v1/info               API information
@@ -27,7 +27,6 @@ import sys
 import tempfile
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Header
@@ -117,19 +116,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root():
-    return {
-        "name": PROJECT_NAME,
-        "version": VERSION,
-        "supported_appliances": MVP_APPLIANCE_CLASSES,
-        "irdai_compliance": {
-            "regulated": True,
-            "regulator": "Insurance Regulatory and Development Authority of India (IRDAI)",
-            "guidelines": "IRDAI (Insurance Advertisements and Disclosure) Regulations, 2021",
-            "disclaimer": "This AI-generated report is an advisory tool and does not replace a licensed insurance surveyor's assessment. All claim decisions must be verified by a qualified adjuster in accordance with IRDAI guidelines.",
-            "compliant": True,
-        },
-        "timestamp": datetime.now().isoformat(),
-    }
+    return {"status": "ok", "message": "AI Appliance Assessment API"}
 
 
 @app.get("/health")
@@ -147,6 +134,13 @@ async def info():
         "fraud_modules": ["ela", "metadata", "advanced_7factor", "screenshot", "ai_gen", "copy_move"],
         "video_formats": API_CONFIG["allowed_video_formats"],
         "model_version": VERSION,
+        "irdai_compliance": {
+            "regulated": True,
+            "regulator": "Insurance Regulatory and Development Authority of India (IRDAI)",
+            "guidelines": "IRDAI (Insurance Advertisements and Disclosure) Regulations, 2021",
+            "disclaimer": "This AI-generated report is an advisory tool and does not replace a licensed insurance surveyor's assessment. All claim decisions must be verified by a qualified adjuster in accordance with IRDAI guidelines.",
+            "compliant": True,
+        },
     }
 
 
@@ -407,4 +401,4 @@ async def sample_report():
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False) -> None:
-    uvicorn.run("api:app", host=host, port=port, reload=reload)
+    uvicorn.run(app, host=host, port=port, reload=reload)
