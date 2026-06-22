@@ -1,79 +1,128 @@
-# ─── Python ──────────────────────────────────────────────
+# ──────────────────────────────────────────────
+# AI Appliance Inspection Platform — .gitignore
+# Production-grade for AI/ML projects
+# ──────────────────────────────────────────────
+
+# ─── Python Bytecode & Cache ──────────────────
 __pycache__/
 *.py[cod]
+*.pyo
+*$py.class
+*.so
 *.egg-info/
 *.egg
 dist/
 build/
-*.so
-.Python
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 
-# ─── Virtual Environment ────────────────────────────────
+# ─── Virtual Environment ──────────────────────
 .venv/
 venv/
 env/
 envs/
 .venv.bak/
+venv.bak/
+ENV/
 
-# ─── IDE / Editor ───────────────────────────────────────
+# ─── IDE / Editor ─────────────────────────────
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
 *~
 .DS_Store
 Thumbs.db
+Desktop.ini
+*.sublime-project
+*.sublime-workspace
 
-# ─── Project Data ───────────────────────────────────────
+# ─── Project Data ─────────────────────────────
 datasets/
-data/*.db
-data/monitor.db
-data/fraud_hashes.db
+data/
+!data/.gitkeep
+*.db
+*.sqlite
+*.sqlite3
 
-# ─── Logs ───────────────────────────────────────────────
+# ─── Logs ─────────────────────────────────────
 logs/
 *.log
 
-# ─── Output / Temporary ─────────────────────────────────
+# ─── Output / Generated ───────────────────────
 output/
 reports/
 temp/
 tmp/
 runs/
+wandb/
 
-# ─── Testing ────────────────────────────────────────────
+# ─── Jupyter / Notebooks ──────────────────────
+.ipynb_checkpoints/
+*.ipynb
+
+# ─── Testing ──────────────────────────────────
 .pytest_cache/
 .coverage
 coverage/
 htmlcov/
 .coverage.*
 *.coverage
+.cache/
+pytestdebug.log
 
-# ─── Jupyter ────────────────────────────────────────────
-.ipynb_checkpoints/
-*.ipynb
-
-# ─── Environment / Secrets ──────────────────────────────
+# ─── Environment / Secrets ────────────────────
 .env
 .env.*
 *.pem
 *.key
 *.cert
+*.keystore
+*.secret
+credentials.json
+client_secret*.json
 
-# ─── Docker ─────────────────────────────────────────────
+# ─── Docker ───────────────────────────────────
 .docker/
 
-# ─── Model Training Artifacts (keep final weights) ─────
-models/damage_detector/damage_*/
-models/damage_detector/*/weights/
-models/damage_detector/*/train/
-models/damage_detector/*/val/
-models/damage_detector/*/test/
-models/appliance_detector/*/weights/
-models/appliance_detector/*/train/
-models/appliance_detector/*/val/
-models/appliance_detector/*/test/
+# ─── ML Training Artifacts ────────────────────
+models/**/damage_*/
+models/**/weights/
+models/**/train/
+models/**/val/
+models/**/test/
+wandb/
+mlruns/
 
-# ─── Documents (keep README, exclude generated PDFs) ───
-*.pdf
-!PROJECT_REPORT.pdf
+# ─── Large model files (>50MB tracked, <50MB OK) ─
+# Keep all .pt files that are <50MB
+# Exclude any checkpoint directories
+**/checkpoints/
+**/checkpoint-*/
+
+# ─── OS Files ─────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ─── Misc ─────────────────────────────────────
+# Keep .gitkeep files
+!.gitkeep
+*.bak
+*.swp
+*.swo
+*~
+*.orig
+.DS_Store
