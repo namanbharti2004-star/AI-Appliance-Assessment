@@ -32,7 +32,7 @@ from risk_engine import RiskEngine
 from services.claim_recommendation import assess_claim, build_justification
 from services.explain_service import build_full_explanation
 from services.fraud_service import AdvancedFraudEngine
-from services.repair_service import estimate_total_repair_cost
+from services.repair_service import estimate_total_repair_cost, assess_repair_impact, assess_repairability, assess_recommended_action
 from services.severity_service import (
     assess_all_damages,
     compute_condition_score,
@@ -78,15 +78,14 @@ class InspectionReport:
     severity: str = "None"
     condition_score: int = 100
     grade: str = "A"
-    repair_cost: int = 0
+    repair_impact: str = "None"
+    repairability: str = "No Repair Needed"
+    recommended_action: str = "No Action Required"
     fraud_score: float = 0.0
     decision: str = "APPROVE"
 
     fraud_risk_level: str = "Low"
     fraud_reasons: List[str] = field(default_factory=list)
-    repair_cost_min: int = 0
-    repair_cost_max: int = 0
-    repair_cost_display: str = ""
     repair_breakdown: List[Dict] = field(default_factory=list)
     claim_score: int = 0
     claim_risk: str = "Low"
@@ -185,13 +184,12 @@ class ReportGenerator:
         report.grade = compute_grade(condition_score)
 
         brand = getattr(self, "_detected_brand", None)
-        cost_result = estimate_total_repair_cost(damage_assessments, report.damage_detections,
-                                                  brand=brand)
-        report.repair_cost = cost_result.get("total_min", 0)
-        report.repair_cost_min = cost_result.get("total_min", 0)
-        report.repair_cost_max = cost_result.get("total_max", 0)
-        report.repair_cost_display = cost_result.get("total_display", "")
-        report.repair_breakdown = cost_result.get("breakdown", [])
+        repair_result = estimate_total_repair_cost(damage_assessments, report.damage_detections,
+                                                    brand=brand)
+        report.repair_impact = repair_result.get("repair_impact", "Medium")
+        report.repairability = repair_result.get("repairability", "Repairable")
+        report.recommended_action = repair_result.get("recommended_action", "Professional Assessment Recommended")
+        report.repair_breakdown = repair_result.get("breakdown", [])
 
         claim_result = assess_claim(
             severity=report.severity,
@@ -224,13 +222,10 @@ class ReportGenerator:
             fraud_risk=report.fraud_risk_level,
             fraud_reasons=report.fraud_reasons,
             ela_score=report.ela_score,
-            cost_display=report.repair_cost_display,
-            cost_min=report.repair_cost_min,
-            cost_max=report.repair_cost_max,
-            cost_breakdown=report.repair_breakdown,
             claim_risk=report.claim_risk,
             claim_score=report.claim_score,
             decision=report.decision,
+            repair_breakdown=report.repair_breakdown,
         )
 
         return report
@@ -267,43 +262,66 @@ class ReportGenerator:
                 "roi": image,
             }
             report.all_predictions = [{"class_name": appliance_override, "confidence": 1.0}]
+            roi = image
         else:
             if appliance_override:
                 logger.warning("Ignoring invalid appliance_override '{}' (not in {})",
                                appliance_override, MVP_APPLIANCE_CLASSES)
             raw_dets, _ = self.appliance_detector.detect_all(image)
-            logger.info("Raw appliance detector output: {}", [(d["class_name"], round(d["confidence"], 3)) for d in raw_dets])
+            logger.info("STEP 1 - detect_all(conf=default) returned {} detections: {}",
+                        len(raw_dets),
+                        [(d["class_name"], round(d["confidence"], 3)) for d in raw_dets])
+
+            if not raw_dets:
+                low_dets, _ = self.appliance_detector.detect_all(image, conf=0.1)
+                raw_dets = low_dets
+                logger.info("STEP 2 - detect_all(conf=0.1) returned {} detections: {}",
+                            len(raw_dets),
+                            [(d["class_name"], round(d["confidence"], 3)) for d in raw_dets])
+
             appliance_detection = self.appliance_detector.detect_single(image)
+            logger.info("STEP 3 - detect_single returned: {}",
+                        {"class_name": appliance_detection["class_name"],
+                         "confidence": round(appliance_detection["confidence"], 3)}
+                        if appliance_detection else None)
+
             all_preds = raw_dets
+
             if all_preds:
                 report.all_predictions = [self._normalize_prediction(p) for p in all_preds[:5]]
 
-        logger.info("appliance_detection raw: {}", appliance_detection)
+            if appliance_detection is None and all_preds:
+                best = all_preds[0]
+                appliance_detection = best
+                logger.info("Using sub-threshold detection: {} at {:.3f}",
+                            best["class_name"], best["confidence"])
 
-        if appliance_detection is None:
-            fallback_objects = self.appliance_detector.detect_objects(image)
-            report.appliance = "unknown"
-            report.appliance_confidence = 0.0
-            report.appliance_bbox = None
-            roi = image
-            if fallback_objects:
-                report.all_predictions = [self._normalize_prediction(o) for o in fallback_objects[:5]]
-                if not report.metadata:
-                    report.metadata = {}
-                report.metadata["detected_objects"] = [
-                    {"class_name": o["class_name"], "confidence": round(o["confidence"], 3), "bbox": o["bbox"]}
-                    for o in fallback_objects[:10]
-                ]
-                logger.info("Fallback objects detected: {} objects", len(fallback_objects))
+            if appliance_detection is not None:
+                report.appliance = appliance_detection["class_name"]
+                report.appliance_confidence = float(appliance_detection["confidence"])
+                report.appliance_bbox = appliance_detection.get("bbox")
+                roi = appliance_detection.get("roi", image)
+                logger.info("FINAL appliance='{}' FINAL confidence={:.3f}",
+                            report.appliance, report.appliance_confidence)
             else:
-                logger.info("No appliance or objects detected; continuing with appliance='unknown'")
-            logger.info("FINAL appliance='{}' FINAL confidence={}", report.appliance, report.appliance_confidence)
-        else:
-            report.appliance = appliance_detection["class_name"]
-            report.appliance_confidence = float(appliance_detection["confidence"])
-            report.appliance_bbox = appliance_detection.get("bbox")
-            roi = appliance_detection.get("roi", image)
-            logger.info("FINAL appliance='{}' FINAL confidence={:.3f}", report.appliance, report.appliance_confidence)
+                fallback_objects = self.appliance_detector.detect_objects(image)
+                report.appliance = "unknown"
+                report.appliance_confidence = 0.0
+                report.appliance_bbox = None
+                roi = image
+                if fallback_objects:
+                    report.all_predictions = [self._normalize_prediction(o) for o in fallback_objects[:5]]
+                    if not report.metadata:
+                        report.metadata = {}
+                    report.metadata["detected_objects"] = [
+                        {"class_name": o["class_name"], "confidence": round(o["confidence"], 3), "bbox": o["bbox"]}
+                        for o in fallback_objects[:10]
+                    ]
+                    logger.info("Fallback objects detected: {} objects", len(fallback_objects))
+                else:
+                    logger.info("No appliance or objects detected; continuing with appliance='unknown'")
+                logger.info("FINAL appliance='{}' FINAL confidence={}",
+                            report.appliance, report.appliance_confidence)
 
         self._detected_brand = None
         if hasattr(self.appliance_detector, 'detect_brand'):
@@ -384,6 +402,12 @@ class ReportGenerator:
         if report.damage_detections:
             avg_conf = sum(d.get("confidence", 0) for d in report.damage_detections) / len(report.damage_detections)
             report.metadata["damage_confidence_label"] = confidence_label(avg_conf)
+        logger.info(
+            "REPORT FINAL: appliance='{}' conf={} damage={} damage_type='{}' all_predictions={}",
+            report.appliance, report.appliance_confidence,
+            report.damage_detected, report.damage_type,
+            [(p.get("class_name", "?"), round(p.get("confidence", 0), 3)) for p in report.all_predictions],
+        )
         return report
 
 
@@ -406,12 +430,16 @@ def format_report_for_api(report: InspectionReport) -> Dict[str, Any]:
         "severity": report.severity,
         "condition_score": report.condition_score,
         "grade": report.grade,
-        "repair_cost": report.repair_cost,
+        "repair_impact": report.repair_impact,
+        "repairability": report.repairability,
+        "recommended_action": report.recommended_action,
         "fraud_score": report.fraud_score,
         "fraud_risk_level": report.fraud_risk_level,
         "claim_score": report.claim_score,
         "claim_risk": report.claim_risk,
-        "repair_cost_display": report.repair_cost_display,
+        "repair_impact": report.repair_impact,
+        "repairability": report.repairability,
+        "recommended_action": report.recommended_action,
         "decision": report.decision,
     }
 
@@ -447,11 +475,9 @@ def format_report_for_dashboard(report: InspectionReport) -> Dict[str, Any]:
             "severity": report.severity,
             "condition_score": report.condition_score,
             "grade": report.grade,
-            "repair_cost": report.repair_cost,
-            "repair_cost_min": report.repair_cost_min,
-            "repair_cost_max": report.repair_cost_max,
-            "repair_cost_display": report.repair_cost_display,
-            "repair_breakdown": report.repair_breakdown,
+            "repair_impact": report.repair_impact,
+            "repairability": report.repairability,
+            "recommended_action": report.recommended_action,
             "fraud_score": report.fraud_score,
             "claim_score": report.claim_score,
             "claim_risk": report.claim_risk,

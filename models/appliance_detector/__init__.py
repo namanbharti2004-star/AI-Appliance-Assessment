@@ -136,11 +136,15 @@ class ApplianceDetector:
             "roi": self._crop_roi(image, bbox),
         }
 
-    def detect_all(self, image: np.ndarray) -> Tuple[List[Dict[str, Any]], float]:
+    def detect_all(self, image: np.ndarray, conf: Optional[float] = None) -> Tuple[List[Dict[str, Any]], float]:
         """
         Returns (all_detections, inference_time_ms).
         Each detection has class_name, confidence, bbox.
         Sorted by confidence descending.
+
+        Args:
+            image: Input image.
+            conf: Confidence threshold override. If None, uses self.confidence_threshold.
         """
         self._ensure_model_loaded()
         if self.model is None or image is None or not isinstance(image, np.ndarray):
@@ -149,31 +153,48 @@ class ApplianceDetector:
         detections: List[Dict[str, Any]] = []
         t0 = time.perf_counter()
         try:
+            effective_conf = conf if conf is not None else self.confidence_threshold
             results = self.model(
                 image,
-                conf=self.confidence_threshold,
+                conf=effective_conf,
                 iou=self.iou_threshold,
                 device=self.device,
                 verbose=False,
             )
             inference_ms = (time.perf_counter() - t0) * 1000
 
+            raw_all: List[Dict[str, Any]] = []
             for result in results:
                 if result.boxes is None:
                     continue
                 names = result.names
                 for box in result.boxes:
                     cls_id = int(box.cls.item())
-                    conf = float(box.conf.item())
-                    raw = names.get(cls_id, str(cls_id))
-                    mapped = COCO_APPLIANCE_MAP.get(raw, raw)
+                    box_conf = float(box.conf.item())
+                    raw_name = names.get(cls_id, str(cls_id))
+                    mapped = COCO_APPLIANCE_MAP.get(raw_name, raw_name)
+                    raw_all.append({
+                        "cls_id": cls_id,
+                        "raw_name": raw_name,
+                        "mapped": mapped,
+                        "confidence": box_conf,
+                        "in_mvp": mapped in self.classes,
+                    })
                     if mapped not in self.classes:
                         continue
                     bbox = box.xyxy[0].tolist()
                     detections.append(self._format_detection(
                         image=image, class_name=mapped,
                         class_id=self.classes.index(mapped),
-                        confidence=conf, bbox=bbox))
+                        confidence=box_conf, bbox=bbox))
+
+            logger.info(
+                "YOLO output at conf={}: raw={} filtered={}",
+                effective_conf,
+                [(d["raw_name"], d["mapped"], round(d["confidence"], 3), d["in_mvp"])
+                 for d in raw_all],
+                [(d["class_name"], round(d["confidence"], 3)) for d in detections],
+            )
         except Exception as exc:
             logger.error("Appliance detection failed: {}", exc)
             inference_ms = (time.perf_counter() - t0) * 1000
@@ -226,7 +247,7 @@ class ApplianceDetector:
         all_dets, _ = self.detect_all(image)
 
         if not all_dets:
-            logger.warning("YOLO found no appliances. Returning None (not forcing heuristic).")
+            logger.warning("detect_single: no detections at threshold={}", APPLIANCE_CONFIDENCE_THRESHOLD)
             return None
 
         if preferred_classes:
@@ -237,12 +258,14 @@ class ApplianceDetector:
         best = all_dets[0]
 
         if best["confidence"] < APPLIANCE_CONFIDENCE_THRESHOLD:
-            logger.warning("Best detection {} has confidence {:.2f} (below {:.2f}). Returning None.",
-                           best["class_name"], best["confidence"], APPLIANCE_CONFIDENCE_THRESHOLD)
+            logger.warning(
+                "detect_single: best={} conf={:.3f} below threshold={}. Returning None.",
+                best["class_name"], best["confidence"], APPLIANCE_CONFIDENCE_THRESHOLD,
+            )
             return None
 
         top3 = [(d["class_name"], round(d["confidence"], 3)) for d in all_dets[:3]]
-        logger.info("Top predictions: {}", top3)
+        logger.info("detect_single: accepted {} conf={:.3f} top3={}", best["class_name"], best["confidence"], top3)
 
         best["top_predictions"] = top3
         return best

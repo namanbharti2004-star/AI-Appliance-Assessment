@@ -29,7 +29,7 @@ from scripts.inference import InspectionPipeline
 from services.claim_service import get_claim_by_id, get_claim_stats, get_claims, save_claim
 from services.pdf_service import generate_pdf_report
 from services.explain_service import build_full_explanation
-from services.repair_service import estimate_total_repair_cost
+from services.repair_service import estimate_total_repair_cost, assess_repair_impact, assess_repairability, assess_recommended_action
 from services.severity_service import compute_condition_score, compute_grade, assess_all_damages
 from services.claim_recommendation import assess_claim, build_justification
 
@@ -40,24 +40,204 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-CUSTOM_CSS = """
+def inject_dashboard_theme() -> None:
+    PRIMARY_BG = "#0E1117"
+    CARD_BG = "#1E2633"
+    CARD_BORDER = "#374151"
+    TEXT_PRIMARY = "#FFFFFF"
+    TEXT_SECONDARY = "#D1D5DB"
+    TEXT_MUTED = "#9CA3AF"
+    ACCENT = "#93C5FD"
+    SUCCESS = "#10B981"
+    WARNING = "#F59E0B"
+    DANGER = "#EF4444"
+
+    st.markdown(f"""
 <style>
-    .main > div { padding-top: 1rem; }
-    .stMetric { background: #f8f9fa; border-radius: 8px; padding: 8px; }
-    .confidence-bar { height: 8px; border-radius: 4px; margin: 4px 0; }
-    .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
-    .badge-green { background: #d4edda; color: #155724; }
-    .badge-yellow { background: #fff3cd; color: #856404; }
-    .badge-red { background: #f8d7da; color: #721c24; }
-    .badge-gray { background: #e2e3e5; color: #383d41; }
-    .explanation-box { background: #f0f4ff; border-left: 4px solid #4a90d9; padding: 12px 16px; border-radius: 4px; margin: 8px 0; }
-    .severity-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-    .decision-banner { padding: 12px; border-radius: 8px; text-align: center; font-weight: 700; font-size: 1.1rem; }
-    .approve { background: #d4edda; color: #155724; }
-    .review { background: #fff3cd; color: #856404; }
-    .reject { background: #f8d7da; color: #721c24; }
+    /* ── GLOBAL TEXT VISIBILITY ── */
+    * {{ opacity: 1 !important; }}
+    html, body, .stApp, .main, .block-container,
+    p, span, div, label, h1, h2, h3, h4, h5, h6,
+    li, ul, ol, a, small, strong, em, b, i,
+    code, pre, .stMarkdown, .stText, .stCaption {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+    .stApp {{
+        background: {PRIMARY_BG};
+    }}
+
+    /* ── STREAMLIT METRICS ── */
+    [data-testid="stMetric"] {{
+        background: {CARD_BG} !important;
+        border: 1px solid {CARD_BORDER} !important;
+        border-radius: 12px !important;
+        padding: 16px !important;
+    }}
+    [data-testid="stMetricValue"] {{
+        color: {TEXT_PRIMARY} !important;
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+    }}
+    [data-testid="stMetricLabel"] {{
+        color: {TEXT_SECONDARY} !important;
+        font-size: 0.85rem !important;
+    }}
+
+    /* ── TABS ── */
+    .stTabs [role="tabpanel"] {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+    .stTabs [data-baseweb="tab"] {{
+        color: {TEXT_SECONDARY} !important;
+    }}
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    /* ── EXPANDERS ── */
+    .streamlit-expanderContent,
+    .streamlit-expanderContent * {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+    .streamlit-expanderHeader {{
+        color: {TEXT_SECONDARY} !important;
+    }}
+
+    /* ── DATAFRAMES / TABLES ── */
+    table, thead, tbody, tr, td, th,
+    [data-testid="StyledDataFrameColHeader"],
+    [data-testid="StyledDataFrameDataCell"] {{
+        color: {TEXT_PRIMARY} !important;
+        background-color: transparent !important;
+    }}
+    thead, [data-testid="StyledDataFrameColHeader"] {{
+        background: {CARD_BG} !important;
+        color: {TEXT_SECONDARY} !important;
+    }}
+    tr:nth-child(even) td {{
+        background: rgba(255,255,255,0.03) !important;
+    }}
+
+    /* ── ALERT OVERRIDES (success, warning, info, error) ── */
+    .stAlert,
+    [data-testid="stAlert"] {{
+        background: {CARD_BG} !important;
+        border: 1px solid {CARD_BORDER} !important;
+        color: {TEXT_PRIMARY} !important;
+    }}
+    .stAlert p, .stAlert span, .stAlert div {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    /* ── BUTTONS ── */
+    .stButton button {{
+        color: {TEXT_PRIMARY} !important;
+        background: {CARD_BG} !important;
+        border: 1px solid {CARD_BORDER} !important;
+    }}
+    .stButton button[kind="primary"] {{
+        background: {ACCENT}22 !important;
+        border-color: {ACCENT} !important;
+    }}
+
+    /* ── SELECTBOX / INPUT ── */
+    [data-testid="stSelectbox"] div,
+    [data-testid="stSelectbox"] span,
+    [data-testid="stSelectbox"] label {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+    [data-testid="stSelectbox"] [role="listbox"] {{
+        background: {CARD_BG} !important;
+    }}
+
+    /* ── SIDEBAR ── */
+    .css-1d391kg, .css-1wrcr25, section[data-testid="stSidebar"] {{
+        background: {PRIMARY_BG} !important;
+    }}
+    .css-1d391kg *, section[data-testid="stSidebar"] * {{
+        color: {TEXT_PRIMARY} !important;
+    }}
+
+    /* ── CUSTOM CLASSES / BADGES ── */
+    .badge {{
+        display: inline-block; padding: 2px 10px; border-radius: 12px;
+        font-size: 0.8rem; font-weight: 600;
+    }}
+    .badge-green {{ background: {SUCCESS}22; color: {SUCCESS} !important; border: 1px solid {SUCCESS}; }}
+    .badge-yellow {{ background: {WARNING}22; color: {WARNING} !important; border: 1px solid {WARNING}; }}
+    .badge-red {{ background: {DANGER}22; color: {DANGER} !important; border: 1px solid {DANGER}; }}
+    .badge-gray {{ background: {CARD_BG}; color: {TEXT_SECONDARY} !important; border: 1px solid {CARD_BORDER}; }}
+
+    /* ── EXPLANATION CARDS (XAI) ── */
+    .explanation-box {{
+        background: {CARD_BG}; color: {TEXT_PRIMARY};
+        padding: 15px; border-radius: 10px; margin: 8px 0;
+    }}
+    .explanation-box p {{ color: {TEXT_PRIMARY}; margin: 0; }}
+    .explanation-box strong {{ color: {ACCENT}; }}
+    .xai-section {{ margin: 4px 0; }}
+    .xai-section + .xai-section {{ margin-top: 8px; }}
+    .xai-label {{ color: {ACCENT}; font-weight: 700; font-size: 0.9rem; letter-spacing: 0.03em; margin-bottom: 4px; }}
+
+    /* ── SEVERITY INDICATOR ── */
+    .severity-indicator {{ width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 6px; }}
+
+    /* ── DECISION BANNER ── */
+    .decision-banner {{
+        padding: 12px; border-radius: 8px; text-align: center;
+        font-weight: 700; font-size: 1.1rem;
+    }}
+    .approve {{ background: {SUCCESS}22; color: {SUCCESS} !important; border: 1px solid {SUCCESS}; }}
+    .review {{ background: {WARNING}22; color: {WARNING} !important; border: 1px solid {WARNING}; }}
+    .reject {{ background: {DANGER}22; color: {DANGER} !important; border: 1px solid {DANGER}; }}
+
+    /* ── SIDEBAR INFO BOX ── */
+    .sidebar-info {{
+        background: {CARD_BG}; border-radius: 8px; padding: 8px;
+        font-size: 0.75rem; border-left: 3px solid {ACCENT};
+        color: {TEXT_PRIMARY};
+    }}
+    .sidebar-info b {{ color: {ACCENT}; }}
+
+    /* ── CONFIDENCE BAR ── */
+    .conf-bar-bg {{
+        background: {CARD_BORDER}; border-radius: 4px; height: 10px;
+    }}
+    .conf-bar-fill {{
+        height: 10px; border-radius: 4px;
+    }}
+    .conf-bar-label {{
+        color: {TEXT_SECONDARY};
+    }}
+
+    /* ── CONSTRAINED VIDEO (expander inside centered column) ── */
+    .stVideo {{
+        max-width: 100% !important;
+    }}
+    .stVideo video {{
+        max-width: 100% !important;
+        max-height: 50vh !important;
+        width: auto !important;
+        height: auto !important;
+        border-radius: 12px !important;
+        border: 1px solid {CARD_BORDER} !important;
+        object-fit: contain !important;
+    }}
+
+    /* ── CONSTRAINED IMAGE PREVIEW ── */
+    .media-preview img {{
+        max-width: 100% !important;
+        max-height: 450px !important;
+        width: auto !important;
+        height: auto !important;
+        border-radius: 12px !important;
+        border: 1px solid {CARD_BORDER} !important;
+        display: block !important;
+        margin: 0 auto !important;
+        object-fit: contain !important;
+    }}
 </style>
-"""
+""", unsafe_allow_html=True)
 
 
 @st.cache_resource
@@ -73,20 +253,17 @@ def _save_upload(uploaded_file, suffix: str) -> str:
     return tmp.name
 
 
-def _severity_color(severity: str) -> str:
-    return {"None": "#6c757d", "Minor": "#28a745", "Moderate": "#ffc107", "Major": "#fd7e14", "Severe": "#dc3545"}.get(severity, "#6c757d")
-
 
 def _confidence_bar(confidence: float, label: str, max_width: int = 200) -> str:
     pct = int(confidence * 100)
-    color = "#28a745" if pct >= 70 else ("#ffc107" if pct >= 40 else "#dc3545")
+    color = "#10B981" if pct >= 70 else ("#F59E0B" if pct >= 40 else "#EF4444")
     return f"""
     <div style="margin: 4px 0;">
         <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-            <span>{label}</span><span>{pct}%</span>
+            <span style="color: #D1D5DB;">{label}</span><span style="color: #FFFFFF;">{pct}%</span>
         </div>
-        <div style="background: #e9ecef; border-radius: 4px; height: 10px; width: {max_width}px;">
-            <div style="background: {color}; width: {pct}%; height: 10px; border-radius: 4px;"></div>
+        <div class="conf-bar-bg" style="width: {max_width}px;">
+            <div class="conf-bar-fill" style="background: {color}; width: {pct}%;"></div>
         </div>
     </div>"""
 
@@ -104,16 +281,21 @@ def _decision_banner(decision: str, claim_risk: str) -> str:
     return f'<div class="decision-banner {cls}">{icon} {decision} &mdash; Risk: {claim_risk.upper()}</div>'
 
 
+def _constrained_image(image, caption: str = "") -> None:
+    st.caption(caption)
+    st.markdown(f'<div class="media-preview">', unsafe_allow_html=True)
+    st.image(image, use_container_width=False, width=None)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
 def _render_image_comparison(original: Any, annotated: Any, report: Dict[str, Any]) -> None:
     st.subheader("Image Comparison")
     col1, col2 = st.columns(2)
     with col1:
-        st.caption("Original Image (no overlay)")
-        st.image(cv2.cvtColor(original, cv2.COLOR_BGR2RGB), use_container_width=True)
+        _constrained_image(cv2.cvtColor(original, cv2.COLOR_BGR2RGB), caption="Original Image (no overlay)")
     with col2:
-        st.caption("Annotated with Detections")
         if annotated is not None:
-            st.image(annotated, use_container_width=True)
+            _constrained_image(annotated, caption="Annotated with Detections")
         else:
             st.info("No annotations available yet. Run inspection to generate.")
 
@@ -131,11 +313,9 @@ def _render_key_metrics(report: Dict[str, Any]) -> None:
     cols[1].metric("Condition", f"{assess.get('condition_score', 0)}/100", assess.get("grade", "N/A"))
 
     sev = assess.get("severity", "None")
-    sev_color = _severity_color(sev)
     cols[2].metric("Severity", sev)
-    st.markdown(f'<div style="margin-top: -20px; margin-bottom: 10px;"><span class="severity-indicator" style="background:{sev_color}"></span></div>', unsafe_allow_html=True)
 
-    cols[3].metric("Est. Repair", assess.get("repair_cost_display", "\u20b90"))
+    cols[3].metric("Repair Impact", assess.get("repair_impact", "N/A"))
     cols[4].metric("Fraud Risk", f'{assess.get("fraud_score", 0)}/100')
 
 
@@ -149,19 +329,30 @@ def _render_confidence_bars(report: Dict[str, Any]) -> None:
         for d in damage_list:
             st.markdown(_confidence_bar(d.get("confidence", 0), f"  {d.get('class_name', '?')} @ {d.get('location', '?')}"), unsafe_allow_html=True)
     else:
-        st.markdown('<div style="color: #28a745; font-weight: 600;">\u2705 No damage detected</div>', unsafe_allow_html=True)
+        st.markdown('<div style="color: #10B981; font-weight: 600;">\u2705 No damage detected</div>', unsafe_allow_html=True)
 
 
 def _render_explanations(report: Dict[str, Any]) -> None:
     st.subheader("Explainable AI")
     explanations = report.get("explanations", {})
 
-    for section, label in [("appliance", "Appliance Classification"), ("damage", "Damage Assessment"),
-                            ("fraud", "Fraud Analysis"), ("repair", "Repair Estimate"), ("claim", "Claim Decision")]:
+    sections = [
+        ("appliance", "Appliance Classification"),
+        ("damage", "Damage Assessment"),
+        ("fraud", "Fraud Analysis"),
+        ("repair", "Repair Estimate"),
+        ("claim", "Claim Recommendation"),
+    ]
+    for section, label in sections:
         text = explanations.get(section, "")
         if text:
-            with st.expander(f"{label}"):
-                st.markdown(f'<div class="explanation-box">{text}</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="xai-section">'
+                f'<div class="xai-label">{label}</div>'
+                f'<div class="explanation-box">{text}</div>'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
 
 def _render_damage_details(report: Dict[str, Any]) -> None:
@@ -184,24 +375,31 @@ def _render_damage_details(report: Dict[str, Any]) -> None:
         st.success("\u2705 No damage detected. Appliance appears in good condition.")
 
     sev = report.get("severity", "None")
-    st.markdown(f"**Overall Severity:** <span style='color:{_severity_color(sev)}'>{sev}</span>", unsafe_allow_html=True)
+    sev_color = {"None": "#9CA3AF", "Minor": "#10B981", "Moderate": "#F59E0B", "Major": "#F97316", "Severe": "#EF4444"}.get(sev, "#9CA3AF")
+    st.markdown(f"<div style='color: #D1D5DB;'>Overall Severity: <span style='color:{sev_color}; font-weight:700;'>{sev}</span></div>", unsafe_allow_html=True)
 
 
 def _render_repair_details(report: Dict[str, Any]) -> None:
-    st.subheader("Repair Cost Breakdown")
-    cost_min = report.get("repair_cost_min", 0)
-    cost_max = report.get("repair_cost_max", 0)
-    st.metric("Estimated Total", f"\u20b9{cost_min:,} - \u20b9{cost_max:,}")
+    st.subheader("Repair Assessment")
+    impact = report.get("repair_impact", "None")
+    repairability = report.get("repairability", "No Repair Needed")
+    action = report.get("recommended_action", "No Action Required")
+
+    c1, c2 = st.columns(2)
+    c1.metric("Repair Impact", impact)
+    c2.metric("Repairability", repairability)
+    st.info(f"**Recommended Action:** {action}")
 
     breakdown = report.get("repair_breakdown", [])
     if breakdown:
+        st.markdown("### Affected Components")
         rows = []
         for item in breakdown:
             rows.append({
                 "Damage": item.get("damage_type", "?").replace("_", " ").title(),
-                "Base Range": item.get("base_range", ""),
-                "Severity Mult": f'x{item.get("severity_multiplier", 1)}',
-                "Range": f'\u20b9{item.get("cost_min", 0):,} - \u20b9{item.get("cost_max", 0):,}',
+                "Severity": item.get("severity", "Minor"),
+                "Repair Impact": item.get("repair_impact", "Low"),
+                "Repairability": item.get("repairability", "Repairable"),
             })
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
@@ -215,8 +413,8 @@ def _render_fraud_details(report: Dict[str, Any]) -> None:
 
     reasons = report.get("fraud_reasons", [])
     if reasons:
-        for r in reasons:
-            st.warning(r)
+        for i, r in enumerate(reasons):
+            st.markdown(f'<div class="explanation-box" style="padding: 8px 12px; margin: 4px 0;">{r}</div>', unsafe_allow_html=True)
 
     risk = report.get("fraud_risk_level", "Low")
     badge = {"Low": "badge-green", "Medium": "badge-yellow", "High": "badge-red", "Critical": "badge-red"}.get(risk, "badge-gray")
@@ -253,13 +451,10 @@ def _build_explanations_for_report(report: Dict[str, Any]) -> Dict[str, str]:
     fraud_risk = report.get("fraud_risk_level", "Low")
     fraud_reasons = report.get("fraud_reasons", [])
     ela_score = report.get("ela_score", 0)
-    cost_display = report.get("repair_cost_display", "\u20b90")
-    cost_min = report.get("repair_cost_min", 0)
-    cost_max = report.get("repair_cost_max", 0)
-    cost_breakdown = report.get("repair_breakdown", [])
     claim_risk = report.get("claim_risk", "low")
     claim_score = report.get("claim_score", 0)
     decision = report.get("decision", "MANUAL_REVIEW")
+    repair_breakdown = report.get("repair_breakdown", [])
 
     return build_full_explanation(
         appliance=appliance_name,
@@ -273,26 +468,23 @@ def _build_explanations_for_report(report: Dict[str, Any]) -> Dict[str, str]:
         fraud_risk=fraud_risk,
         fraud_reasons=fraud_reasons,
         ela_score=ela_score,
-        cost_display=cost_display,
-        cost_min=cost_min,
-        cost_max=cost_max,
-        cost_breakdown=cost_breakdown,
         claim_risk=claim_risk,
         claim_score=claim_score,
         decision=decision,
+        repair_breakdown=repair_breakdown,
     )
 
 
 def _enrich_report(report: Dict[str, Any], damage_detections: List[Dict], annotated_image: Optional[Any]) -> Dict[str, Any]:
     """Add enriched fields (explanations, breakdown, etc.) to report."""
-    total = estimate_total_repair_cost(
+    repair_result = estimate_total_repair_cost(
         assess_all_damages(damage_detections, image_shape=(640, 640)),
         damage_detections,
     )
-    report["repair_cost_min"] = total["total_min"]
-    report["repair_cost_max"] = total["total_max"]
-    report["repair_cost_display"] = total["total_display"]
-    report["repair_breakdown"] = total["breakdown"]
+    report["repair_impact"] = repair_result.get("repair_impact", "Medium")
+    report["repairability"] = repair_result.get("repairability", "Repairable")
+    report["recommended_action"] = repair_result.get("recommended_action", "Professional Assessment Recommended")
+    report["repair_breakdown"] = repair_result.get("breakdown", [])
 
     condition_score = compute_condition_score(
         assess_all_damages(damage_detections, image_shape=(640, 640))
@@ -369,15 +561,14 @@ def image_tab() -> None:
 
         col_img1, col_img2 = st.columns(2)
         with col_img1:
-            st.caption("Original (no overlay)")
-            st.image(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB), use_container_width=True)
+            _constrained_image(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB), caption="Original (no overlay)")
         with col_img2:
             st.caption("Annotated Inspection")
             if annotated is not None:
-                st.image(annotated, use_container_width=True)
+                _constrained_image(annotated)
             else:
                 st.warning("Annotated image unavailable; showing original instead.")
-                st.image(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB), use_container_width=True)
+                _constrained_image(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB))
 
         st.markdown("---")
         _render_key_metrics(report)
@@ -436,7 +627,11 @@ def video_tab() -> None:
         return
 
     video_path = _save_upload(uploaded, suffix=os.path.splitext(uploaded.name)[1] or ".mp4")
-    st.video(video_path)
+    st.caption("Uploaded Video")
+    colL, colM, colR = st.columns([1, 3, 1])
+    with colM:
+        with st.expander("Play Video"):
+            st.video(video_path)
 
     if st.button("Run Video Inspection", type="primary", use_container_width=True):
         with st.spinner("Processing frames..."):
@@ -453,7 +648,11 @@ def video_tab() -> None:
 
         st.success("Video analysis complete!")
         if result.get("annotated_video_path"):
-            st.video(result["annotated_video_path"])
+            st.caption("Annotated Video")
+            colL, colM, colR = st.columns([1, 3, 1])
+            with colM:
+                with st.expander("Play Video"):
+                    st.video(result["annotated_video_path"])
         if result.get("summary"):
             summary = result["summary"]
             st.markdown("### Summary Report")
@@ -524,9 +723,8 @@ def _render_analytics_tab() -> None:
         c3.metric("Avg Claim Score", f"{df['claim_score'].mean():.1f}")
     if "condition_score" in df.columns:
         c4.metric("Avg Condition", f"{df['condition_score'].mean():.1f}")
-    if "repair_cost" in df.columns:
-        avg_cost = df["repair_cost"].mean()
-        c5.metric("Avg Repair Cost", f"\u20b9{avg_cost:,.0f}")
+    if "repair_impact" in df.columns:
+        c5.metric("Avg Repair Impact", df["repair_impact"].mode().iloc[0] if not df["repair_impact"].mode().empty else "N/A")
 
     st.markdown("---")
     dist_col1, dist_col2, dist_col3 = st.columns(3)
@@ -626,7 +824,13 @@ def multi_image_tab() -> None:
         path = _save_upload(f, suffix=os.path.splitext(f.name)[1] or ".jpg")
         paths.append(path)
         with col[i % 3]:
-            st.image(path, caption=f"{i+1}. {f.name}", use_container_width=True)
+            from utils import read_image
+            thumb = read_image(path)
+            if thumb is not None:
+                thumb_rgb = cv2.cvtColor(thumb, cv2.COLOR_BGR2RGB)
+                _constrained_image(thumb_rgb, caption=f"{i+1}. {f.name}")
+            else:
+                st.image(path, caption=f"{i+1}. {f.name}", width=200)
 
     if st.button("Run Multi-Image Inspection", type="primary", use_container_width=True):
         from services.multi_image_service import MultiImageInspector
@@ -646,14 +850,14 @@ def multi_image_tab() -> None:
         cols[0].metric("Appliance", report.appliance)
         cols[1].metric("Condition", f"{report.condition_score}/100", report.grade)
         cols[2].metric("Severity", report.severity)
-        cols[3].metric("Est. Repair", report.repair_cost_display)
+        cols[3].metric("Repair Impact", report.repair_impact)
         cols[4].metric("Fraud Risk", f"{report.fraud_score}/100")
 
         if report.annotated_image_path and os.path.exists(report.annotated_image_path):
             from utils import read_image
             annotated_img = read_image(report.annotated_image_path)
             if annotated_img is not None:
-                st.image(cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB), caption="Annotated Best Image", use_container_width=True)
+                _constrained_image(cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB), caption="Annotated Best Image")
             else:
                 st.warning("Annotated image unavailable.")
         else:
@@ -688,12 +892,17 @@ def multi_image_tab() -> None:
                         st.caption(f"  - {issue}")
 
         with tab3:
-            for section, label in [("appliance", "Appliance"), ("damage", "Damage"),
-                                    ("fraud", "Fraud"), ("repair", "Repair"), ("claim", "Claim")]:
+            for section, label in [("appliance", "Appliance Classification"), ("damage", "Damage Assessment"),
+                                    ("fraud", "Fraud Analysis"), ("repair", "Repair Estimate"), ("claim", "Claim Recommendation")]:
                 text = report.explanations.get(section, "")
                 if text:
-                    with st.expander(f"{label}"):
-                        st.markdown(text)
+                    st.markdown(
+                        f'<div class="xai-section">'
+                        f'<div class="xai-label">{label}</div>'
+                        f'<div class="explanation-box">{text}</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
         with tab4:
             if report.repair_breakdown:
@@ -701,13 +910,13 @@ def multi_image_tab() -> None:
                 for item in report.repair_breakdown:
                     rows.append({
                         "Damage": item.get("damage_type", "?").replace("_", " ").title(),
-                        "Base Range": item.get("base_range", ""),
-                        "Mult": f'x{item.get("severity_multiplier", 1)}',
-                        "Range": f'\u20b9{item.get("cost_min", 0):,} - \u20b9{item.get("cost_max", 0):,}',
+                        "Severity": item.get("severity", "Minor"),
+                        "Repair Impact": item.get("repair_impact", "Low"),
+                        "Repairability": item.get("repairability", "Repairable"),
                     })
                 st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
             else:
-                st.info("No repair cost breakdown available.")
+                st.info("No repair assessment available.")
 
         if st.button("Save Multi-Image Report", use_container_width=True):
             from services.claim_service import save_claim
@@ -769,7 +978,7 @@ def _render_monitor_tab() -> None:
 
 
 def main() -> None:
-    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    inject_dashboard_theme()
 
     with st.sidebar:
         st.markdown("### \u2699\ufe0f AI Inspection")
@@ -777,7 +986,7 @@ def main() -> None:
         st.markdown("---")
         nav = st.radio("Navigation", ["Image", "Video", "Multi-Image", "History", "Analytics", "Monitor"], label_visibility="collapsed")
         st.markdown("---")
-        st.markdown("""<div style="background:#e8f0fe;border-radius:8px;padding:8px;font-size:0.75rem;border-left:3px solid #1a73e8">
+        st.markdown("""<div class="sidebar-info">
 <b>\u00a9 IRDAI Compliant</b><br>
 AI advisory tool under IRDAI Regulations, 2021.<br>
 Does not replace licensed surveyor assessment.

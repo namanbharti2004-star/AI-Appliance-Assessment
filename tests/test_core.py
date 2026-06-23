@@ -122,11 +122,12 @@ class TestRiskEngine:
         assert result["severity"] in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]
 
     def test_repair_cost_estimator(self):
-        """Test repair cost estimation"""
+        """Test repair impact estimation"""
         from risk_engine import RepairCostEstimator
         estimator = RepairCostEstimator()
-        cost = estimator.estimate(damage_type="crack", damage_percentage=30, missing_part_detected=False)
-        assert cost > 0
+        impact = estimator.estimate(damage_type="crack", damage_percentage=30, missing_part_detected=False)
+        assert isinstance(impact, str)
+        assert len(impact) > 0
 
 
 class TestReportEngine:

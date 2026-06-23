@@ -132,14 +132,17 @@ def generate_pdf_report(
     if repair_breakdown:
         for item in repair_breakdown:
             dt = item.get("damage_type", "?").replace("_", " ").title()
-            b_range = item.get("base_range", "")
-            s_mult = item.get("severity_multiplier", 1)
-            pdf.cell(0, 7, f"  {dt}: Base {b_range}, Severity Mult: x{s_mult}", new_x="LMARGIN", new_y="NEXT")
+            sev = item.get("severity", "Minor")
+            impact = item.get("repair_impact", "Low")
+            repair = item.get("repairability", "Repairable")
+            pdf.cell(0, 7, f"  {dt}: Severity={sev}, Impact={impact}, Repairability={repair}", new_x="LMARGIN", new_y="NEXT")
 
-    cost_display = _get_assessment(report, "repair_cost_display", _get(report, "repair_cost_display", ""))
-    if not cost_display:
-        cost_display = f"\u20b9{_get_assessment(report, 'repair_cost', _get(report, 'repair_cost', 0)):,}"
-    pdf.cell(0, 7, f"  Estimated Total: {cost_display}", new_x="LMARGIN", new_y="NEXT")
+    impact = _get_assessment(report, "repair_impact", _get(report, "repair_impact", "None"))
+    repairability = _get_assessment(report, "repairability", _get(report, "repairability", "No Repair Needed"))
+    action = _get_assessment(report, "recommended_action", _get(report, "recommended_action", "No Action Required"))
+    pdf.cell(0, 7, f"  Repair Impact: {impact}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"  Repairability: {repairability}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"  Recommended Action: {action}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(3)
 
     # Fraud Analysis
@@ -164,7 +167,7 @@ def generate_pdf_report(
         for section, label in [("appliance", "Appliance Classification"),
                                 ("damage", "Damage Detection"),
                                 ("fraud", "Fraud Analysis"),
-                                ("repair", "Repair Estimate"),
+                                ("repair", "Repair Assessment"),
                                 ("claim", "Claim Decision")]:
             text = explanations.get(section, "")
             if text:
@@ -232,7 +235,11 @@ def generate_pdf_report(
     pdf.cell(0, 7, f"  Severity: {sev}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, f"  Fraud Score: {fraud_score}/100", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 7, f"  Decision: {decision}", new_x="LMARGIN", new_y="NEXT")
-    pdf.cell(0, 7, f"  Repair Estimate: {cost_display}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"  Repair Assessment:", new_x="LMARGIN", new_y="NEXT")
+    rep_impact = _get_assessment(report, "repair_impact", _get(report, "repair_impact", "None"))
+    rep_repair = _get_assessment(report, "repairability", _get(report, "repairability", "No Repair Needed"))
+    pdf.cell(0, 7, f"    Impact: {rep_impact}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"    Repairability: {rep_repair}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(5)
 
     # Justification

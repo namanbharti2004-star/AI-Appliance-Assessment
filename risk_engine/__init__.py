@@ -10,7 +10,6 @@ from typing import Any, Dict, Optional
 from configs.config import (
     CONDITION_GRADE_RANGES,
     DECISION_THRESHOLDS,
-    REPAIR_COST_RULES,
     RISK_WEIGHTS,
     SEVERITY_RANGES,
 )
@@ -23,7 +22,7 @@ class RiskAssessment:
     grade: str
     damage_percentage: int
     severity: str
-    repair_cost: int
+    repair_impact: str
     fraud_score: float
     decision: str
     details: Dict[str, Any]
@@ -34,7 +33,7 @@ class RiskAssessment:
             "grade": self.grade,
             "damage_percentage": self.damage_percentage,
             "severity": self.severity,
-            "repair_cost": self.repair_cost,
+            "repair_impact": self.repair_impact,
             "fraud_score": self.fraud_score,
             "decision": self.decision,
             "details": self.details,
@@ -55,15 +54,14 @@ class DamageSeverityEstimator:
 
 
 class RepairCostEstimator:
-    def estimate(self, damage_type: Optional[str], damage_percentage: int, missing_part_detected: bool) -> int:
-        total = 0
-        if damage_type and damage_type in REPAIR_COST_RULES:
-            rule = REPAIR_COST_RULES[damage_type]
-            total += int(rule["base"] + (damage_percentage * rule["multiplier"] * 10))
-        if missing_part_detected:
-            rule = REPAIR_COST_RULES["missing_part"]
-            total += int(rule["base"] + (damage_percentage * rule["multiplier"] * 5))
-        return total
+    def estimate(self, damage_type: Optional[str], damage_percentage: int, missing_part_detected: bool) -> str:
+        if not damage_type or damage_type == "missing_part":
+            return "No Repair Needed"
+        if damage_percentage > 60:
+            return "Screen/Panel Replacement Recommended"
+        if damage_percentage > 30:
+            return "Major Repair Required"
+        return "Repairable"
 
 
 class RiskEngine:
@@ -139,7 +137,7 @@ class RiskEngine:
             fraud_score=fraud_score,
         )
         grade = self._grade_from_condition(condition_score)
-        repair_cost = self.repair_engine.estimate(
+        repair_impact = self.repair_engine.estimate(
             damage_type=damage_type,
             damage_percentage=severity_data["damage_percentage"],
             missing_part_detected=missing_part_detected,
@@ -151,7 +149,7 @@ class RiskEngine:
             grade=grade,
             damage_percentage=severity_data["damage_percentage"],
             severity=severity_data["severity"],
-            repair_cost=repair_cost,
+            repair_impact=repair_impact,
             fraud_score=fraud_score,
             decision=decision,
             details={

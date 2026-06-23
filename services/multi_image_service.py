@@ -138,9 +138,9 @@ class MultiImageReport:
     fraud_risk_level: str = "Low"
     fraud_reasons: List[str] = field(default_factory=list)
 
-    repair_cost_display: str = ""
-    repair_cost_min: int = 0
-    repair_cost_max: int = 0
+    repair_impact: str = "None"
+    repairability: str = "No Repair Needed"
+    recommended_action: str = "No Action Required"
     repair_breakdown: List[Dict] = field(default_factory=list)
 
     claim_score: int = 0
@@ -263,10 +263,11 @@ class MultiImageInspector:
         elif avg_fraud > 30:
             fraud_level = "Medium"
 
-        cost_result = estimate_total_repair_cost(
+        repair_result = estimate_total_repair_cost(
             assess_all_damages(merged_detections, image_shape=images[0].shape[:2]) if merged_detections else [],
             merged_detections,
-        ) if merged_detections else {"total_min": 0, "total_max": 0, "total_display": "₹0", "breakdown": []}
+        ) if merged_detections else {"repair_impact": "None", "repairability": "No Repair Needed",
+                                      "recommended_action": "No Action Required", "breakdown": []}
 
         claim_result = assess_claim(
             severity=severity,
@@ -290,13 +291,10 @@ class MultiImageInspector:
             fraud_risk=fraud_level,
             fraud_reasons=fraud_reasons,
             ela_score=0.0,
-            cost_display=cost_result.get("total_display", "₹0"),
-            cost_min=cost_result.get("total_min", 0),
-            cost_max=cost_result.get("total_max", 0),
-            cost_breakdown=cost_result.get("breakdown", []),
             claim_risk=claim_result["claim_risk"],
             claim_score=claim_result["claim_score"],
             decision=claim_result["decision"],
+            repair_breakdown=repair_result.get("breakdown", []),
         )
 
         report_id = str(uuid.uuid4())[:8]
@@ -344,10 +342,10 @@ class MultiImageInspector:
             fraud_score=avg_fraud,
             fraud_risk_level=fraud_level,
             fraud_reasons=fraud_reasons,
-            repair_cost_display=cost_result.get("total_display", "₹0"),
-            repair_cost_min=cost_result.get("total_min", 0),
-            repair_cost_max=cost_result.get("total_max", 0),
-            repair_breakdown=cost_result.get("breakdown", []),
+            repair_impact=repair_result.get("repair_impact", "None"),
+            repairability=repair_result.get("repairability", "No Repair Needed"),
+            recommended_action=repair_result.get("recommended_action", "No Action Required"),
+            repair_breakdown=repair_result.get("breakdown", []),
             claim_score=claim_result["claim_score"],
             claim_risk=claim_result["claim_risk"],
             decision=claim_result["decision"],

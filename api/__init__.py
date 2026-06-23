@@ -59,7 +59,9 @@ class InspectionResponse(BaseModel):
     appliance_confidence: float = 0.0
     fraud_score: float = 0.0
     severity: str = "None"
-    repair_cost_display: str = ""
+    repair_impact: str = ""
+    repairability: str = ""
+    recommended_action: str = ""
     decision: str = "MANUAL_REVIEW"
 
 
@@ -402,9 +404,9 @@ async def sample_report():
         "severity": "Moderate",
         "condition_score": 68,
         "grade": "C",
-        "repair_cost_min": 3500,
-        "repair_cost_max": 6300,
-        "repair_cost_display": "\u20b93,500 - \u20b96,300",
+        "repair_impact": "Medium",
+        "repairability": "Major Repair Required",
+        "recommended_action": "Professional Service-Center Assessment Recommended",
         "fraud_score": 18,
         "fraud_risk_level": "Low",
         "claim_score": 42,

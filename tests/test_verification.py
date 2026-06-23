@@ -274,13 +274,13 @@ class TestBrandAwareRepairCosts:
         assert found, "detect_brand() function not found anywhere in models/ or services/"
 
     def test_brand_multiplier_applied_in_repair_cost(self):
-        """repair service must reference BRAND_COST_MULTIPLIERS"""
+        """repair service uses severity-based assessment (no monetary estimates)"""
         repair_files = list(Path("services").glob("*repair*"))
         if not repair_files:
             pytest.skip("No repair service found")
         src = repair_files[0].read_text()
-        assert "BRAND_COST_MULTIPLIERS" in src or "brand_multiplier" in src.lower(), \
-            "Brand multiplier not applied in repair cost calculation"
+        assert "SEVERITY_IMPACT_MAP" in src, \
+            "Repair service must use severity-based qualitative assessment"
 
 # ─── 9. REDIS/CELERY VIDEO QUEUE ────────────────────────────────────────────
 

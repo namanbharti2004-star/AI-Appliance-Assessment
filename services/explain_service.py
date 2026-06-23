@@ -86,24 +86,26 @@ def build_fraud_explanation(
 
 
 def build_repair_explanation(
-    cost_display: str,
-    cost_min: int,
-    cost_max: int,
-    breakdown: Optional[List[Dict]] = None,
     severity: str = "",
+    breakdown: Optional[List[Dict]] = None,
 ) -> str:
-    parts = [f"Estimated repair cost: **{cost_display}**."]
+    parts = [
+        "The detected damage affects a critical component. "
+        "Replacement or major repair may be required. "
+        "A service-center quotation is recommended before claim approval."
+    ]
+    if severity == "Minor":
+        parts.append("Damage is cosmetic — minor repair only.")
+    elif severity == "Moderate":
+        parts.append("Moderate damage — professional assessment recommended.")
+    elif severity in ("Major", "Severe"):
+        parts.append("Severe damage — replacement or major repair may be required.")
     if breakdown:
-        parts.append(" Breakdown:")
+        parts.append(" Affected components:")
         for item in breakdown:
             dt = item.get("damage_type", "unknown")
-            mn = item.get("cost_min", 0)
-            mx = item.get("cost_max", 0)
-            parts.append(f"  - {dt}: ₹{mn}-₹{mx}")
-    if severity == "Severe":
-        parts.append(" Severe damage — cost may approach replacement value.")
-    elif cost_max > 20000:
-        parts.append(" High estimated cost — consider professional assessment.")
+            sev = item.get("severity", "Minor")
+            parts.append(f"  - {dt} ({sev})")
     return " ".join(parts)
 
 
@@ -148,13 +150,10 @@ def build_full_explanation(
     fraud_risk: str,
     fraud_reasons: List[str],
     ela_score: float,
-    cost_display: str,
-    cost_min: int,
-    cost_max: int,
-    cost_breakdown: Optional[List[Dict]],
     claim_risk: str,
     claim_score: int,
     decision: str,
+    repair_breakdown: Optional[List[Dict]] = None,
 ) -> Dict[str, str]:
     return {
         "appliance": build_appliance_explanation(appliance, appliance_conf, top_preds),
@@ -162,6 +161,6 @@ def build_full_explanation(
             damage_detections, severity, condition_score, grade,
         ),
         "fraud": build_fraud_explanation(fraud_score, fraud_risk, fraud_reasons, ela_score),
-        "repair": build_repair_explanation(cost_display, cost_min, cost_max, cost_breakdown, severity),
+        "repair": build_repair_explanation(severity=severity, breakdown=repair_breakdown),
         "claim": build_claim_explanation(claim_risk, claim_score, decision, severity, fraud_score),
     }

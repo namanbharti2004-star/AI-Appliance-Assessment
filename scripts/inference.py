@@ -74,9 +74,9 @@ class InspectionPipeline:
         condition = report_dict.get("condition_score", 0)
         decision = report_dict.get("decision", "N/A")
         grade = report_dict.get("grade", "N/A")
-        cost = report_dict.get("repair_cost_display") or f"Rs.{report_dict.get('repair_cost', 0)}"
+        cost = report_dict.get("repair_impact", "N/A")
 
-        header = f"Severity: {severity}  |  Fraud: {fraud}/100  |  Claim: {claim_risk}  |  Condition: {condition}({grade})  |  Cost: {cost}  |  {decision}"
+        header = f"Severity: {severity}  |  Fraud: {fraud}/100  |  Claim: {claim_risk}  |  Condition: {condition}({grade})  |  Repair: {cost}  |  {decision}"
         cv2.putText(vis, header, (10, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2)
 
         lines = [

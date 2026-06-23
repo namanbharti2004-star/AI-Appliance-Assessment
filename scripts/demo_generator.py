@@ -72,11 +72,11 @@ class DemoGenerator:
         fraud = report.get("fraud_score", 0)
         risk = report.get("claim_risk", "N/A")
         decision = report.get("decision", "N/A")
-        cost = report.get("repair_cost_display", f"₹{report.get('repair_cost', 0)}")
+        cost = report.get("repair_impact", "N/A")
         appliance = report.get("appliance", "?")
 
         left = f"AI Appliance Inspection  |  {appliance}  |  Sev:{sev}  Fraud:{fraud}  Risk:{risk}"
-        right = f"Dec:{decision}  Cost:{cost}  F:{fps:.1f}fps  #{frame_idx}"
+        right = f"Dec:{decision}  Repair:{cost}  F:{fps:.1f}fps  #{frame_idx}"
 
         cv2.putText(frame, left, (12, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.55, DEMO_COLORS["text"], 2)
         rw, _ = cv2.getTextSize(right, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)[0]
@@ -101,7 +101,7 @@ class DemoGenerator:
         grade = report.get("grade", "A")
         decision = report.get("decision", "N/A")
         dec_color = DEMO_COLORS["approved"] if decision == "APPROVE" else DEMO_COLORS["rejected"]
-        cost = report.get("repair_cost_display", f"₹{report.get('repair_cost', 0)}")
+        cost = report.get("repair_impact", "N/A")
         damage_type = report.get("damage_type", "none")
         damage_pct = report.get("damage_percentage", 0)
 
@@ -111,7 +111,7 @@ class DemoGenerator:
             (f"Severity: {sev}  |  Grade: {grade} ({condition}/100)", DEMO_COLORS["severity"]),
             (f"Fraud Score: {fraud}/100  ({report.get('fraud_risk_level', 'N/A')})", DEMO_COLORS["fraud"]),
             (f"Claim Risk: {risk}  |  Score: {score}/100", DEMO_COLORS["claim"]),
-            (f"Est. Cost: {cost}", DEMO_COLORS["cost"]),
+            (f"Est. Repair: {cost}", DEMO_COLORS["cost"]),
             (f"Decision: {decision}", dec_color),
         ]
 
