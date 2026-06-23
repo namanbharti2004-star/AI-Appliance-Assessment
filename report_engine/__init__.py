@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 from loguru import logger
 
-from configs.config import MODEL_PATHS, SEVERITY_RANGES
+from configs.config import MODEL_PATHS, MVP_APPLIANCE_CLASSES, SEVERITY_RANGES
 from fraud_detection import FraudAnalysisResult
 from missing_part_detector import MissingPartDetector
 from models.appliance_detector import ApplianceDetector
@@ -39,6 +39,7 @@ from services.severity_service import (
     compute_grade,
     get_overall_severity,
 )
+from utils import confidence_label
 
 try:
     from services.damage_segmentation_service import SegmentationService
@@ -134,6 +135,36 @@ class ReportGenerator:
             return configured
         return None
 
+    @staticmethod
+    def _normalize_prediction(p: Any) -> Dict[str, Any]:
+        if isinstance(p, dict):
+            return {"class_name": p.get("class_name", "?"), "confidence": p.get("confidence", 0)}
+        if isinstance(p, (list, tuple)):
+            logger.debug("Normalizing list/tuple prediction: type={}", type(p).__name__)
+            return {
+                "class_name": str(p[0]) if len(p) > 0 else "?",
+                "confidence": float(p[1]) if len(p) > 1 else 0,
+            }
+        logger.debug("Normalizing scalar prediction: type={} value={}", type(p).__name__, p)
+        return {"class_name": str(p), "confidence": 0}
+
+    @staticmethod
+    def _detect_screenshot_indicators(image: np.ndarray) -> bool:
+        try:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            h, w = gray.shape
+            top_border = gray[0:3, :].mean() > 240 if h > 3 else False
+            bottom_border = gray[-3:, :].mean() > 240 if h > 3 else False
+            if top_border or bottom_border:
+                return True
+            edges = cv2.Canny(gray, 50, 150)
+            edge_density = edges.sum() / (h * w * 255)
+            if edge_density < 0.01:
+                return True
+        except Exception:
+            pass
+        return False
+
     def _compute_enriched_fields(self, report: InspectionReport, image: np.ndarray) -> InspectionReport:
         """Compute severity, repair cost, claim recommendation, and explanations."""
         h, w = image.shape[:2]
@@ -182,8 +213,9 @@ class ReportGenerator:
         report.explanations = build_full_explanation(
             appliance=report.appliance,
             appliance_conf=report.appliance_confidence,
-            top_preds=[(p.get("class_name", ""), p.get("confidence", 0))
-                       for p in report.all_predictions] if report.all_predictions else None,
+            top_preds=[(n["class_name"], n["confidence"])
+                       for n in [self._normalize_prediction(p)
+                                 for p in report.all_predictions]] if report.all_predictions else None,
             damage_detections=report.damage_detections,
             severity=report.severity,
             condition_score=condition_score,
@@ -219,11 +251,15 @@ class ReportGenerator:
         )
 
         if image is None or not isinstance(image, np.ndarray):
-            report.decision = "MANUAL_REVIEW"
             report.metadata = {"error": "Invalid image input (None or non-array)."}
             return report
 
-        if appliance_override:
+        screenshot_indicators = self._detect_screenshot_indicators(image)
+        if screenshot_indicators:
+            report.source_type = "screenshot"
+
+        if appliance_override and appliance_override in MVP_APPLIANCE_CLASSES:
+            logger.info("Using appliance override: {}", appliance_override)
             appliance_detection = {
                 "class_name": appliance_override,
                 "confidence": 1.0,
@@ -232,44 +268,73 @@ class ReportGenerator:
             }
             report.all_predictions = [{"class_name": appliance_override, "confidence": 1.0}]
         else:
+            if appliance_override:
+                logger.warning("Ignoring invalid appliance_override '{}' (not in {})",
+                               appliance_override, MVP_APPLIANCE_CLASSES)
+            raw_dets, _ = self.appliance_detector.detect_all(image)
+            logger.info("Raw appliance detector output: {}", [(d["class_name"], round(d["confidence"], 3)) for d in raw_dets])
             appliance_detection = self.appliance_detector.detect_single(image)
-            all_preds = self.appliance_detector.detect_all(image)
+            all_preds = raw_dets
             if all_preds:
-                report.all_predictions = [
-                    {"class_name": p.get("class_name", "?"), "confidence": p.get("confidence", 0)}
-                    for p in all_preds[:5]
-                ]
+                report.all_predictions = [self._normalize_prediction(p) for p in all_preds[:5]]
+
+        logger.info("appliance_detection raw: {}", appliance_detection)
 
         if appliance_detection is None:
-            report.decision = "MANUAL_REVIEW"
-            report.metadata = {"error": "No appliance detected."}
-            return report
+            fallback_objects = self.appliance_detector.detect_objects(image)
+            report.appliance = "unknown"
+            report.appliance_confidence = 0.0
+            report.appliance_bbox = None
+            roi = image
+            if fallback_objects:
+                report.all_predictions = [self._normalize_prediction(o) for o in fallback_objects[:5]]
+                if not report.metadata:
+                    report.metadata = {}
+                report.metadata["detected_objects"] = [
+                    {"class_name": o["class_name"], "confidence": round(o["confidence"], 3), "bbox": o["bbox"]}
+                    for o in fallback_objects[:10]
+                ]
+                logger.info("Fallback objects detected: {} objects", len(fallback_objects))
+            else:
+                logger.info("No appliance or objects detected; continuing with appliance='unknown'")
+            logger.info("FINAL appliance='{}' FINAL confidence={}", report.appliance, report.appliance_confidence)
+        else:
+            report.appliance = appliance_detection["class_name"]
+            report.appliance_confidence = float(appliance_detection["confidence"])
+            report.appliance_bbox = appliance_detection.get("bbox")
+            roi = appliance_detection.get("roi", image)
+            logger.info("FINAL appliance='{}' FINAL confidence={:.3f}", report.appliance, report.appliance_confidence)
 
-        report.appliance = appliance_detection["class_name"]
-        report.appliance_confidence = float(appliance_detection["confidence"])
-        report.appliance_bbox = appliance_detection.get("bbox")
-        roi = appliance_detection.get("roi", image)
-
-        self._detected_brand = self.appliance_detector.detect_brand(image, image_path) if hasattr(self.appliance_detector, 'detect_brand') else None
+        self._detected_brand = None
+        if hasattr(self.appliance_detector, 'detect_brand'):
+            try:
+                self._detected_brand = self.appliance_detector.detect_brand(image, image_path)
+            except Exception:
+                self._detected_brand = None
 
         resolved_damage_model = self._resolve_damage_model_path(report.appliance, damage_model_path)
         damage_detections: List[Dict[str, Any]] = []
 
         if self.segmentation_service and self.segmentation_service.is_enabled:
-            seg_detections = self.segmentation_service.detect(image=image, roi=roi)
-            if seg_detections:
-                damage_detections = seg_detections
-                report.segmentation_used = True
-                logger.info("Using segmentation damage detection ({} detections)", len(seg_detections))
+            try:
+                seg_detections = self.segmentation_service.detect(image=image, roi=roi)
+                if seg_detections:
+                    damage_detections = seg_detections
+                    report.segmentation_used = True
+                    logger.info("Using segmentation damage detection ({} detections)", len(seg_detections))
+            except Exception:
+                logger.warning("Segmentation detection failed, falling back to bbox detection")
 
         if not damage_detections:
-            damage_detector = get_damage_detector(report.appliance, model_path=resolved_damage_model)
-            damage_detections = damage_detector.detect(image=image, roi=roi)
-            if damage_detections:
-                logger.info("Using bbox damage detection ({} detections)", len(damage_detections))
+            try:
+                damage_detector = get_damage_detector(report.appliance, model_path=resolved_damage_model)
+                damage_detections = damage_detector.detect(image=image, roi=roi)
+                if damage_detections:
+                    logger.info("Using bbox damage detection ({} detections)", len(damage_detections))
+            except Exception as exc:
+                logger.error("Damage detection failed: {}", exc)
 
-        MIN_CONFIDENCE = 0.4
-        damage_detections = [d for d in damage_detections if d.get("confidence", 0) >= MIN_CONFIDENCE]
+        damage_detections = [d for d in damage_detections if d.get("confidence", 0) >= 0.25]
 
         report.damage_detections = damage_detections
         report.damage_detected = bool(damage_detections)
@@ -279,27 +344,32 @@ class ReportGenerator:
             report.damage_confidence = float(primary_damage["confidence"])
             report.damage_bbox = primary_damage.get("bbox", [0, 0, 0, 0])
 
-        missing_result = self.missing_part_detector.inspect(report.appliance, roi)
-        report.missing_part_detected = missing_result.missing_part_detected
-        report.missing_part = missing_result.missing_part
-        report.missing_part_confidence = missing_result.confidence
-        report.missing_part_warnings = missing_result.warnings
+        try:
+            missing_result = self.missing_part_detector.inspect(report.appliance, roi)
+            report.missing_part_detected = missing_result.missing_part_detected
+            report.missing_part = missing_result.missing_part
+            report.missing_part_confidence = missing_result.confidence
+            report.missing_part_warnings = missing_result.warnings
+        except Exception:
+            pass
 
-        if self.fraud_engine is not None:
-            fraud_result: FraudAnalysisResult = self.fraud_engine.analyze(image=image, image_path=image_path)
-            report.ela_score = fraud_result.ela_score
-            report.metadata_risk_score = fraud_result.metadata_risk_score
-            report.fraud_metadata = fraud_result.metadata or {}
-        else:
-            report.ela_score = 0.0
-            report.metadata_risk_score = 0.0
-            report.fraud_metadata = {}
+        try:
+            if self.fraud_engine is not None:
+                fraud_result: FraudAnalysisResult = self.fraud_engine.analyze(image=image, image_path=image_path)
+                report.ela_score = fraud_result.ela_score
+                report.metadata_risk_score = fraud_result.metadata_risk_score
+                report.fraud_metadata = fraud_result.metadata or {}
+        except Exception:
+            pass
 
-        advanced_fraud = self.advanced_fraud.analyze(image, image_path,
-                                                     detected_appliance=report.appliance)
-        report.fraud_score = advanced_fraud.fraud_score
-        report.fraud_risk_level = advanced_fraud.risk_level
-        report.fraud_reasons = advanced_fraud.reasons
+        try:
+            advanced_fraud = self.advanced_fraud.analyze(image, image_path,
+                                                         detected_appliance=report.appliance)
+            report.fraud_score = advanced_fraud.fraud_score
+            report.fraud_risk_level = advanced_fraud.risk_level
+            report.fraud_reasons = advanced_fraud.reasons
+        except Exception:
+            pass
 
         report = self._compute_enriched_fields(report, image)
 
@@ -309,7 +379,11 @@ class ReportGenerator:
             "supported_mvp": True,
             "segmentation_used": report.segmentation_used,
             "model_version": "3.0.0",
+            "appliance_confidence_label": confidence_label(report.appliance_confidence) if report.appliance_confidence > 0 else "Unknown",
         }
+        if report.damage_detections:
+            avg_conf = sum(d.get("confidence", 0) for d in report.damage_detections) / len(report.damage_detections)
+            report.metadata["damage_confidence_label"] = confidence_label(avg_conf)
         return report
 
 
@@ -320,6 +394,7 @@ def format_report_for_api(report: InspectionReport) -> Dict[str, Any]:
         "source_type": report.source_type,
         "appliance": report.appliance,
         "appliance_confidence": round(report.appliance_confidence, 3),
+        "appliance_confidence_label": confidence_label(report.appliance_confidence) if report.appliance_confidence > 0 else "Unknown",
         "damage_detected": report.damage_detected,
         "damage_type": report.damage_type,
         "damage_confidence": round(report.damage_confidence, 3),

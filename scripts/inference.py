@@ -35,13 +35,14 @@ class InspectionPipeline:
         vis = image.copy()
         h, w = vis.shape[:2]
 
+        appliance = report_dict.get("appliance", "unknown")
         appliance_bbox = report_dict.get("appliance_bbox")
         if appliance_bbox:
             x1, y1, x2, y2 = [int(v) for v in appliance_bbox]
             cv2.rectangle(vis, (x1, y1), (x2, y2), (0, 200, 0), 2)
             cv2.putText(
                 vis,
-                f"{report_dict.get('appliance', 'unknown')} {report_dict.get('appliance_confidence', 0):.2f}",
+                f"{appliance} {report_dict.get('appliance_confidence', 0):.2f}",
                 (x1, max(25, y1 - 8)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.6,
@@ -100,7 +101,7 @@ class InspectionPipeline:
         self,
         image_path: str,
         appliance_override: Optional[str] = None,
-        save_visualizations: bool = False,
+        save_visualizations: bool = True,
         output_dir: str = "output",
     ) -> Dict[str, object]:
         image = read_image(image_path)
@@ -116,18 +117,18 @@ class InspectionPipeline:
         report_dict = report.to_dict()
 
         visual_path = None
-        if save_visualizations:
-            os.makedirs(output_dir, exist_ok=True)
-            annotated = self.annotate_image(image, report_dict)
-            visual_path = os.path.join(output_dir, f"annotated_{report.report_id}.jpg")
-            save_image(annotated, visual_path)
+        os.makedirs(output_dir, exist_ok=True)
+        annotated = self.annotate_image(image, report_dict)
+        visual_path = os.path.join(output_dir, f"annotated_{report.report_id}.jpg")
+        save_image(annotated, visual_path)
 
-        return {
+        result = {
             "report": report_dict,
             "api_format": format_report_for_api(report),
             "dashboard_format": format_report_for_dashboard(report),
-            "visualization_path": visual_path,
+            "annotated_image_path": visual_path,
         }
+        return result
 
     def extract_frames_smart(self, video_path: str, max_frames: int) -> List[np.ndarray]:
         frames: List[np.ndarray] = []
@@ -240,9 +241,16 @@ class InspectionPipeline:
         with open(summary_path, "w", encoding="utf-8") as file:
             json.dump({"summary": summary, "frames": reports, "damage_persistence": damage_persistence}, file, indent=2)
 
+        best_frame_annotated_path = os.path.join(
+            output_dir,
+            f"annotated_best_frame_{os.path.splitext(os.path.basename(video_path))[0]}.jpg"
+        )
+        cv2.imwrite(best_frame_annotated_path, annotated_frames[best_frame_idx])
+
         return {
             "summary": summary,
             "frames": reports,
+            "annotated_image_path": best_frame_annotated_path,
             "annotated_video_path": output_video_path,
             "summary_report_path": summary_path,
             "damage_persistence": damage_persistence,

@@ -17,6 +17,14 @@ import numpy as np
 from PIL import Image
 
 
+def confidence_label(confidence: float) -> str:
+    if confidence > 0.8:
+        return "High confidence"
+    elif confidence >= 0.5:
+        return "Moderate confidence"
+    return "Low confidence"
+
+
 def setup_logging(log_dir: str = "logs", level: str = "INFO") -> None:
     """
     Configure logging for the application

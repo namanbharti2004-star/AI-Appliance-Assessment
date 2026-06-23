@@ -32,6 +32,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
 import uvicorn
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -46,6 +48,19 @@ from services.multi_image_service import MultiImageInspector
 from services.video_queue import get_job_status, submit_video_job
 
 API_KEYS: List[str] = []
+
+
+class InspectionResponse(BaseModel):
+    model_config = {"extra": "allow"}
+    annotated_image_path: str = ""
+    damage_detected: bool = False
+    damage_type: str = ""
+    appliance: str = ""
+    appliance_confidence: float = 0.0
+    fraud_score: float = 0.0
+    severity: str = "None"
+    repair_cost_display: str = ""
+    decision: str = "MANUAL_REVIEW"
 
 
 def verify_api_key(x_api_key: Optional[str] = Header(None)) -> None:
@@ -162,10 +177,10 @@ async def check_quality(file: UploadFile = File(...)):
             os.remove(path)
 
 
-@app.post("/api/v1/inspect/image")
+@app.post("/api/v1/inspect/image", response_model=InspectionResponse)
 async def inspect_image(
     file: UploadFile = File(...),
-    appliance_override: Optional[str] = Form(None),
+    appliance_override: Optional[str] = Form(None, description="Force appliance class (phone, television, laptop). Leave empty for auto-detection."),
     _: None = Depends(verify_api_key),
 ):
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -179,13 +194,11 @@ async def inspect_image(
         if image is None:
             raise HTTPException(status_code=400, detail="Could not read image")
 
-        quality = check_image_quality(image)
-        if not quality.passed:
-            return JSONResponse({
-                "error": "Image quality check failed",
-                "quality": quality.to_dict(),
-                "guidance": quality.guidance,
-            }, status_code=400)
+        try:
+            quality = check_image_quality(image)
+            quality_check = quality.to_dict() if quality is not None else {}
+        except Exception:
+            quality_check = {}
 
         pipeline = app_state["pipeline"]
         result = await _track_async(
@@ -198,14 +211,14 @@ async def inspect_image(
         if result.get("error"):
             raise HTTPException(status_code=500, detail=result["error"])
 
-        result["quality_check"] = quality.to_dict()
+        result["quality_check"] = quality_check
         return JSONResponse(result)
     finally:
         if os.path.exists(path):
             os.remove(path)
 
 
-@app.post("/api/v1/inspect/multi")
+@app.post("/api/v1/inspect/multi", response_model=InspectionResponse)
 async def inspect_multi(
     files: List[UploadFile] = File(...),
     appliance_override: Optional[str] = Form(None),
@@ -239,7 +252,7 @@ async def inspect_multi(
                 os.remove(p)
 
 
-@app.post("/api/v1/inspect/video")
+@app.post("/api/v1/inspect/video", response_model=InspectionResponse)
 async def inspect_video(
     file: UploadFile = File(...),
     appliance_override: Optional[str] = Form(None),
@@ -398,6 +411,10 @@ async def sample_report():
         "claim_risk": "Medium",
         "decision": "MANUAL_REVIEW",
     })
+
+
+os.makedirs("output", exist_ok=True)
+app.mount("/output", StaticFiles(directory="output"), name="output")
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False) -> None:

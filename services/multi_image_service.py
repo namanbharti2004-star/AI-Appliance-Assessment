@@ -151,6 +151,7 @@ class MultiImageReport:
 
     best_evidence_images: Dict[str, int] = field(default_factory=dict)
     per_image_quality: List[Dict[str, Any]] = field(default_factory=list)
+    annotated_image_path: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         import dataclasses
@@ -298,8 +299,36 @@ class MultiImageInspector:
             decision=claim_result["decision"],
         )
 
+        report_id = str(uuid.uuid4())[:8]
+
+        annotated_image_path = ""
+        if images:
+            from utils import save_image
+            best_img_idx = 0
+            max_dets = 0
+            for i, dets in enumerate(all_image_detections):
+                if len(dets) > max_dets:
+                    max_dets = len(dets)
+                    best_img_idx = i
+            img_for_annot = images[best_img_idx].copy()
+            for d in all_image_detections[best_img_idx]:
+                bbox = d.get("bbox")
+                if bbox and len(bbox) == 4:
+                    x1, y1, x2, y2 = [int(v) for v in bbox]
+                    label = d.get("class_name", "damage")
+                    conf = d.get("confidence", 0)
+                    cv2.rectangle(img_for_annot, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                    text = f"{label} {conf:.2f}"
+                    (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                    cv2.rectangle(img_for_annot, (x1, y1 - th - 6), (x1 + tw + 4, y1), (0, 0, 255), -1)
+                    cv2.putText(img_for_annot, text, (x1 + 2, y1 - 4),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            annotated_image_path = os.path.join("output", f"annotated_{report_id}.jpg")
+            os.makedirs("output", exist_ok=True)
+            save_image(img_for_annot, annotated_image_path)
+
         return MultiImageReport(
-            report_id=str(uuid.uuid4())[:8],
+            report_id=report_id,
             timestamp=datetime.now().isoformat(),
             image_count=len(valid_paths),
             image_paths=valid_paths,
@@ -326,4 +355,5 @@ class MultiImageInspector:
             explanations=explanations,
             best_evidence_images=best_evidence,
             per_image_quality=quality_results,
+            annotated_image_path=annotated_image_path,
         )

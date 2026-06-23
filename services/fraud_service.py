@@ -115,8 +115,8 @@ def _detect_screenshot(gray: np.ndarray) -> Tuple[int, List[str]]:
     edge_density = edges.sum() / (h * w * 255)
 
     if edge_density < 0.02:
-        score += 15
-        reasons.append("Very low edge density — possible screenshot or synthetic image")
+        score += 5
+        reasons.append("Low edge density — possible screenshot")
 
     top_row = gray[0, :]
     bottom_row = gray[-1, :]
@@ -125,8 +125,8 @@ def _detect_screenshot(gray: np.ndarray) -> Tuple[int, List[str]]:
     for border, name in [(top_row, "top"), (bottom_row, "bottom"), (left_col, "left"), (right_col, "right")]:
         border_std = float(np.std(border))
         if border_std < 5 and np.mean(border) > 200:
-            score += 5
-            reasons.append(f"White/solid border at {name} edge — possible screenshot crop")
+            score += 2
+            reasons.append(f"Border detected at {name} edge — possible screenshot crop")
             break
 
     window = 50
@@ -140,10 +140,10 @@ def _detect_screenshot(gray: np.ndarray) -> Tuple[int, List[str]]:
         if float(np.std(region)) < 10:
             uniform_count += 1
     if uniform_count >= 2:
-        score += 10
-        reasons.append("Uniform color blocks — UI/screenshot pattern")
+        score += 3
+        reasons.append("Uniform color blocks — possible screenshot pattern")
 
-    return min(score, 30), reasons
+    return min(score, 10), reasons
 
 
 def _detect_ai_generated(gray: np.ndarray) -> Tuple[int, List[str]]:
@@ -291,19 +291,19 @@ def _check_metadata_location_consistency(
                     gps_info[gps_tag] = gps_value
         if gps_info:
             if detected_appliance == "television" or detected_appliance == "refrigerator":
-                score += 10
+                score += 3
                 reasons.append("GPS metadata present for indoor appliance — possible stock photo")
         if gps_info.get("GPSLatitude") and gps_info.get("GPSLongitude"):
-            score += 5
-            reasons.append("GPS coordinates found — location can be verified against claim address")
+            score += 2
+            reasons.append("GPS coordinates found")
         if len(gps_info) == 0:
             has_other_exif = any(TAGS.get(t, t) in ("Make", "Model", "DateTime", "Software") for t in exif.keys())
             if has_other_exif and not gps_info:
-                score += 5
-                reasons.append("EXIF present but GPS location stripped — possible privacy scrub")
+                score += 2
+                reasons.append("EXIF present but GPS location stripped")
     except Exception:
         pass
-    return min(score, 15), reasons
+    return min(score, 8), reasons
 
 
 class AdvancedFraudEngine:
@@ -320,17 +320,16 @@ class AdvancedFraudEngine:
     def _check_metadata_anomalies(self, image_path: Optional[str]) -> Dict[str, Any]:
         result: Dict[str, Any] = {"score": 0, "reasons": []}
         if not image_path or not os.path.exists(image_path):
-            result["score"] = 25
-            result["reasons"].append("No metadata / file path missing")
+            result["score"] = 5
+            result["reasons"].append("Metadata unavailable — path missing")
             return result
         try:
             img = Image.open(image_path)
             exif = img.getexif()
             if not exif:
-                result["score"] = 20
-                result["reasons"].append("EXIF data completely missing — possibly web-downloaded or stripped")
+                result["score"] = 5
+                result["reasons"].append("EXIF metadata not found (common for screenshots and web images)")
             else:
-                has_orientation = False
                 has_model = False
                 has_date = False
                 software = None
@@ -340,32 +339,27 @@ class AdvancedFraudEngine:
                         has_model = True
                     elif tag in ("DateTime", "DateTimeOriginal", "DateTimeDigitized"):
                         has_date = True
-                    elif tag == "Orientation":
-                        has_orientation = True
                     elif tag == "Software":
                         software = str(value).lower()
-                if not has_model and exif:
-                    result["score"] += 8
+                if not has_model:
+                    result["score"] += 3
                     result["reasons"].append("No camera make/model in EXIF")
                 if not has_date:
-                    result["score"] += 8
+                    result["score"] += 3
                     result["reasons"].append("No timestamp in EXIF metadata")
-                if not has_orientation:
-                    result["score"] += 4
-                    result["reasons"].append("Missing orientation data")
                 if software:
                     editing_software = ["photoshop", "gimp", "stable diffusion", "midjourney", "dalle",
                                         "firefly", "canva", "pixlr", "lightroom", "affinity"]
                     if any(s in software for s in editing_software):
-                        result["score"] += 25
-                        result["reasons"].append(f"Image software indicates editing: {software}")
+                        result["score"] += 10
+                        result["reasons"].append(f"Image edited with: {software}")
                     elif any(s in software for s in ("screenshot", "capture", "snip")):
-                        result["score"] += 15
-                        result["reasons"].append(f"Screenshot software: {software}")
+                        result["score"] += 3
+                        result["reasons"].append(f"Captured with: {software}")
         except Exception:
-            result["score"] = 15
+            result["score"] = 5
             result["reasons"].append("Could not read metadata (corrupted or unsupported format)")
-        result["score"] = min(result["score"], 40)
+        result["score"] = min(result["score"], 15)
         return result
 
     def _check_resolution_mismatch(self, image: np.ndarray) -> Dict[str, Any]:
@@ -413,23 +407,23 @@ class AdvancedFraudEngine:
 
         is_duplicate, count = _store_hash(hash_int)
         if count > 1:
-            result["score"] = min(25 + (count - 1) * 5, 40)
-            result["reasons"].append(f"Duplicate image (seen {count}x in database)")
+            result["score"] = min(5 + (count - 1) * 2, 10)
+            result["reasons"].append(f"Similar image (seen {count}x)" if count <= 2 else f"Similar image frequently submitted (seen {count}x)")
             return result
 
         for prev_hash in self._session_hashes:
             dist = _hamming_distance(hash_int, prev_hash)
             if dist <= 2:
-                result["score"] = 30
-                result["reasons"].append("Near-identical image in this session — possible claim reuse")
+                result["score"] = 10
+                result["reasons"].append("Near-identical image in this session")
                 break
             elif dist <= 8:
-                result["score"] = 10
+                result["score"] = 5
                 result["reasons"].append("Similar image in this session")
                 break
 
         self._session_hashes.append(hash_int)
-        result["score"] = min(result["score"], 40)
+        result["score"] = min(result["score"], 10)
         return result
 
     def analyze(self, image: np.ndarray, image_path: Optional[str] = None,

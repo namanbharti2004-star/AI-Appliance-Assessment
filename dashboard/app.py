@@ -144,7 +144,7 @@ def _render_confidence_bars(report: Dict[str, Any]) -> None:
     app_conf = report.get("appliance_confidence", report.get("confidence", 0))
     st.markdown(_confidence_bar(app_conf, f"Appliance: {report.get('appliance', 'N/A')}"), unsafe_allow_html=True)
 
-    damage_list = report.get("damage", {}).get("all_detections", [])
+    damage_list = report.get("damage_detections", [])
     if damage_list:
         for d in damage_list:
             st.markdown(_confidence_bar(d.get("confidence", 0), f"  {d.get('class_name', '?')} @ {d.get('location', '?')}"), unsafe_allow_html=True)
@@ -165,8 +165,7 @@ def _render_explanations(report: Dict[str, Any]) -> None:
 
 
 def _render_damage_details(report: Dict[str, Any]) -> None:
-    damage = report.get("damage", {})
-    dets = damage.get("all_detections", [])
+    dets = report.get("damage_detections", [])
     st.subheader("Damage Assessment")
     if dets:
         rows = []
@@ -184,19 +183,17 @@ def _render_damage_details(report: Dict[str, Any]) -> None:
     else:
         st.success("\u2705 No damage detected. Appliance appears in good condition.")
 
-    assess = report.get("assessment", {})
-    sev = assess.get("severity", "None")
+    sev = report.get("severity", "None")
     st.markdown(f"**Overall Severity:** <span style='color:{_severity_color(sev)}'>{sev}</span>", unsafe_allow_html=True)
 
 
 def _render_repair_details(report: Dict[str, Any]) -> None:
-    assess = report.get("assessment", {})
     st.subheader("Repair Cost Breakdown")
-    cost_min = assess.get("repair_cost_min", 0)
-    cost_max = assess.get("repair_cost_max", 0)
+    cost_min = report.get("repair_cost_min", 0)
+    cost_max = report.get("repair_cost_max", 0)
     st.metric("Estimated Total", f"\u20b9{cost_min:,} - \u20b9{cost_max:,}")
 
-    breakdown = assess.get("repair_breakdown", [])
+    breakdown = report.get("repair_breakdown", [])
     if breakdown:
         rows = []
         for item in breakdown:
@@ -210,29 +207,27 @@ def _render_repair_details(report: Dict[str, Any]) -> None:
 
 
 def _render_fraud_details(report: Dict[str, Any]) -> None:
-    fraud = report.get("fraud", {})
     st.subheader("Fraud Analysis")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Advanced Score", f'{fraud.get("fraud_score", 0)}/100')
-    c2.metric("ELA Score", f'{fraud.get("ela_score", 0):.2f}')
-    c3.metric("Metadata Risk", f'{fraud.get("metadata_risk_score", 0):.2f}')
+    c1.metric("Advanced Score", f'{report.get("fraud_score", 0)}/100')
+    c2.metric("ELA Score", f'{report.get("ela_score", 0):.2f}')
+    c3.metric("Metadata Risk", f'{report.get("metadata_risk_score", 0):.2f}')
 
-    reasons = fraud.get("fraud_reasons", [])
+    reasons = report.get("fraud_reasons", [])
     if reasons:
         for r in reasons:
             st.warning(r)
 
-    risk = fraud.get("fraud_risk_level", "Low")
+    risk = report.get("fraud_risk_level", "Low")
     badge = {"Low": "badge-green", "Medium": "badge-yellow", "High": "badge-red", "Critical": "badge-red"}.get(risk, "badge-gray")
     st.markdown(f'Fraud Risk: <span class="badge {badge}">{risk}</span>', unsafe_allow_html=True)
 
 
 def _render_claim_details(report: Dict[str, Any]) -> None:
-    assess = report.get("assessment", {})
     st.subheader("Claim Recommendation")
-    decision = assess.get("decision", "MANUAL_REVIEW")
-    claim_risk = assess.get("claim_risk", "low")
-    claim_score = assess.get("claim_score", 0)
+    decision = report.get("decision", "MANUAL_REVIEW")
+    claim_risk = report.get("claim_risk", "low")
+    claim_score = report.get("claim_score", 0)
 
     cols = st.columns(3)
     cols[0].metric("Claim Score", f"{claim_score}/100")
@@ -241,33 +236,30 @@ def _render_claim_details(report: Dict[str, Any]) -> None:
     badge = {"low": "badge-green", "medium": "badge-yellow", "high": "badge-red", "critical": "badge-red"}.get(claim_risk.lower(), "badge-gray")
     st.markdown(f'Decision: <span class="badge {badge}">{decision}</span>', unsafe_allow_html=True)
 
-    justification = assess.get("claim_justification", "")
+    justification = report.get("claim_justification", "")
     if justification:
         st.markdown(f'<div class="explanation-box">{justification}</div>', unsafe_allow_html=True)
 
 
 def _build_explanations_for_report(report: Dict[str, Any]) -> Dict[str, str]:
-    assess = report.get("assessment", {})
-    damage = report.get("damage", {})
-    fraud = report.get("fraud", {})
-    detections = damage.get("all_detections", [])
+    detections = report.get("damage_detections", [])
 
     appliance_name = report.get("appliance", "unknown")
     appliance_conf = report.get("appliance_confidence", 0)
-    severity = assess.get("severity", "None")
-    condition_score = assess.get("condition_score", 100)
-    grade = assess.get("grade", "A")
-    fraud_score = fraud.get("fraud_score", 0)
-    fraud_risk = fraud.get("fraud_risk_level", "Low")
-    fraud_reasons = fraud.get("fraud_reasons", [])
-    ela_score = fraud.get("ela_score", 0)
-    cost_display = assess.get("repair_cost_display", "\u20b90")
-    cost_min = assess.get("repair_cost_min", 0)
-    cost_max = assess.get("repair_cost_max", 0)
-    cost_breakdown = assess.get("repair_breakdown", [])
-    claim_risk = assess.get("claim_risk", "low")
-    claim_score = assess.get("claim_score", 0)
-    decision = assess.get("decision", "MANUAL_REVIEW")
+    severity = report.get("severity", "None")
+    condition_score = report.get("condition_score", 100)
+    grade = report.get("grade", "A")
+    fraud_score = report.get("fraud_score", 0)
+    fraud_risk = report.get("fraud_risk_level", "Low")
+    fraud_reasons = report.get("fraud_reasons", [])
+    ela_score = report.get("ela_score", 0)
+    cost_display = report.get("repair_cost_display", "\u20b90")
+    cost_min = report.get("repair_cost_min", 0)
+    cost_max = report.get("repair_cost_max", 0)
+    cost_breakdown = report.get("repair_breakdown", [])
+    claim_risk = report.get("claim_risk", "low")
+    claim_score = report.get("claim_score", 0)
+    decision = report.get("decision", "MANUAL_REVIEW")
 
     return build_full_explanation(
         appliance=appliance_name,
@@ -293,38 +285,35 @@ def _build_explanations_for_report(report: Dict[str, Any]) -> Dict[str, str]:
 
 def _enrich_report(report: Dict[str, Any], damage_detections: List[Dict], annotated_image: Optional[Any]) -> Dict[str, Any]:
     """Add enriched fields (explanations, breakdown, etc.) to report."""
-    assess = report.get("assessment", report)
-    damage_dict = report.get("damage", {})
-
     total = estimate_total_repair_cost(
         assess_all_damages(damage_detections, image_shape=(640, 640)),
         damage_detections,
     )
-    assess["repair_cost_min"] = total["total_min"]
-    assess["repair_cost_max"] = total["total_max"]
-    assess["repair_cost_display"] = total["total_display"]
-    assess["repair_breakdown"] = total["breakdown"]
+    report["repair_cost_min"] = total["total_min"]
+    report["repair_cost_max"] = total["total_max"]
+    report["repair_cost_display"] = total["total_display"]
+    report["repair_breakdown"] = total["breakdown"]
 
     condition_score = compute_condition_score(
         assess_all_damages(damage_detections, image_shape=(640, 640))
     )
-    assess["condition_score"] = condition_score
-    assess["grade"] = compute_grade(condition_score)
+    report["condition_score"] = condition_score
+    report["grade"] = compute_grade(condition_score)
 
     claim_result = assess_claim(
-        severity=assess.get("severity", "None"),
-        fraud_score=assess.get("fraud_score", 0),
+        severity=report.get("severity", "None"),
+        fraud_score=report.get("fraud_score", 0),
         condition_score=condition_score,
         damage_count=len(damage_detections),
     )
-    assess["claim_score"] = claim_result["claim_score"]
-    assess["claim_risk"] = claim_result["claim_risk"]
-    assess["decision"] = claim_result["decision"]
-    assess["claim_justification"] = build_justification(
-        claim_result, assess.get("severity", "None"),
-        assess.get("fraud_score", 0),
-        report.get("fraud", {}).get("fraud_reasons", []),
-        assess.get("grade", "A"),
+    report["claim_score"] = claim_result["claim_score"]
+    report["claim_risk"] = claim_result["claim_risk"]
+    report["decision"] = claim_result["decision"]
+    report["claim_justification"] = build_justification(
+        claim_result, report.get("severity", "None"),
+        report.get("fraud_score", 0),
+        report.get("fraud_reasons", []),
+        report.get("grade", "A"),
     )
 
     explanations = _build_explanations_for_report(report)
@@ -367,13 +356,14 @@ def image_tab() -> None:
             return
 
         report = result["report"]
-        damage_detections = report.get("damage", {}).get("all_detections", [])
+        damage_detections = report.get("damage_detections", [])
 
-        report = _enrich_report(report, damage_detections, result.get("visualization_path"))
+        annotated_path = result.get("annotated_image_path", "")
+        report = _enrich_report(report, damage_detections, annotated_path)
 
         annotated = None
-        if result.get("visualization_path"):
-            annotated_img = read_image(result["visualization_path"])
+        if annotated_path and os.path.exists(annotated_path):
+            annotated_img = read_image(annotated_path)
             if annotated_img is not None:
                 annotated = cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB)
 
@@ -385,6 +375,9 @@ def image_tab() -> None:
             st.caption("Annotated Inspection")
             if annotated is not None:
                 st.image(annotated, use_container_width=True)
+            else:
+                st.warning("Annotated image unavailable; showing original instead.")
+                st.image(cv2.cvtColor(original_image, cv2.COLOR_BGR2RGB), use_container_width=True)
 
         st.markdown("---")
         _render_key_metrics(report)
@@ -413,7 +406,7 @@ def image_tab() -> None:
             try:
                 pdf_path = generate_pdf_report(
                     report,
-                    annotated_image_path=result.get("visualization_path"),
+                    annotated_image_path=annotated_path,
                     output_dir="reports",
                 )
                 st.session_state.pdf_path = pdf_path
@@ -656,6 +649,16 @@ def multi_image_tab() -> None:
         cols[3].metric("Est. Repair", report.repair_cost_display)
         cols[4].metric("Fraud Risk", f"{report.fraud_score}/100")
 
+        if report.annotated_image_path and os.path.exists(report.annotated_image_path):
+            from utils import read_image
+            annotated_img = read_image(report.annotated_image_path)
+            if annotated_img is not None:
+                st.image(cv2.cvtColor(annotated_img, cv2.COLOR_BGR2RGB), caption="Annotated Best Image", use_container_width=True)
+            else:
+                st.warning("Annotated image unavailable.")
+        else:
+            st.info("Annotated image not available for this inspection.")
+
         st.markdown("---")
         tab1, tab2, tab3, tab4 = st.tabs(["Merged Damages", "Per-Image Quality", "Explanations", "Repair Breakdown"])
 
@@ -678,7 +681,8 @@ def multi_image_tab() -> None:
                 pct = q.get("score", 0)
                 passed = q.get("passed", False)
                 issues = q.get("issues", [])
-                st.markdown(f"**Image {i+1}:** Quality={pct}/100 {'\u2705' if passed else '\u274c'}")
+                icon = "\u2705" if passed else "\u274c"
+                st.markdown(f"**Image {i+1}:** Quality={pct}/100 {icon}")
                 if issues:
                     for issue in issues:
                         st.caption(f"  - {issue}")

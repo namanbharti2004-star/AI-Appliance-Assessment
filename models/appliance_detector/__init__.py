@@ -181,6 +181,42 @@ class ApplianceDetector:
         detections.sort(key=lambda d: d["confidence"], reverse=True)
         return detections, inference_ms
 
+    def detect_objects(self, image: np.ndarray) -> List[Dict[str, Any]]:
+        self._ensure_model_loaded()
+        if self.model is None or image is None or not isinstance(image, np.ndarray):
+            return []
+        try:
+            results = self.model(
+                image,
+                conf=0.1,
+                iou=0.5,
+                device=self.device,
+                verbose=False,
+            )
+            objects = []
+            for result in results:
+                if result.boxes is None:
+                    continue
+                names = result.names
+                for box in result.boxes:
+                    cls_id = int(box.cls.item())
+                    conf = float(box.conf.item())
+                    raw = names.get(cls_id, str(cls_id))
+                    bbox = box.xyxy[0].tolist()
+                    objects.append({
+                        "class_name": raw,
+                        "confidence": conf,
+                        "bbox": bbox,
+                    })
+            objects.sort(key=lambda d: d["confidence"], reverse=True)
+            if objects:
+                logger.info("Generic object detection found {} objects (top: {} {:.2f})",
+                            len(objects), objects[0]["class_name"], objects[0]["confidence"])
+            return objects
+        except Exception as exc:
+            logger.error("Generic object detection failed: {}", exc)
+            return []
+
     def detect(self, image: np.ndarray) -> List[Dict[str, Any]]:
         detections, _ = self.detect_all(image)
         return detections
